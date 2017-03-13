@@ -1,14 +1,12 @@
 (ns miner.lambdo
   (:require [clojure.java.io :as io]
-            [clojure.data.fressian :as fr]
-            #_ [taoensso.nippy :as nip])
+            [taoensso.nippy :as nip])
   (:import (org.lmdbjava Env EnvFlags Dbi DbiFlags Txn TxnFlags PutFlags)
            (java.nio ByteBuffer)
            java.nio.charset.StandardCharsets ))
 
-;; SEM: Considering nippy for future use.  For now, concentrating on using Fressian for data
-;; encoding.
-
+;; SEM: Nippy encoding/decoding byte arrays into ByteBuffer for LMDBjava to use.
+;; Fressian was too hard to use.
 
 (defn str->bytes [s]
   (when s
@@ -35,10 +33,10 @@
 ;;; SEM -- might be better to make the flagMask ourselves if we had another constructor.
 ;;; Probably should refactor the lmdbjava Dbi class.
 
-(defn db-open
+(defn open-db
   ;; returns Dbi
-  ([env] (db-open env nil))
-  ([env dbname] (db-open env dbname [DbiFlags/MDB_CREATE]))
+  ([env] (open-db env nil))
+  ([env dbname] (open-db env dbname [DbiFlags/MDB_CREATE]))
   ([^Env env ^String dbname flags]   (.openDbi env
                                                dbname
                                                ^"[Lorg.lmdbjava.DbiFlags;"
@@ -92,28 +90,36 @@
 
 ;; Concerned about too many buffers.  Maybe should try to recycle with Lambdo???
 
-;; Need to verify  Fressian usage.  Are the ByteBuffers supported directly or do we have to
-;; call .array to get byte arrays for Fressian?  For read-object???
+
 
 (defn encode ^ByteBuffer [val]
-  (fr/write-object key))
+  (let [raw ^bytes (nip/freeze val)
+        ^ByteBuffer bb (ByteBuffer/allocateDirect (int (alength raw)))]
+    (.flip (.put bb raw))))
 
 (defn decode [^ByteBuffer byte-buf]
-  (fr/read-object byte-buf))
+  (let [len (.limit byte-buf)
+        barr (byte-array len)]
+    (.rewind byte-buf)
+    (.get byte-buf barr)
+    (nip/thaw barr)))
 
 
 
 
 (defn get-val
   ;; takes a Clojure key and returns a Clojure value.
-  ;; Uses Fressian encoding internally.
+  ([^Dbi db ^Txn txn key] (decode (.get db txn (encode key)))))
+
+
   ;; Not sure about making the temp txn and committing it for a read.  Maybe should reset???
-  ([^Dbi db key]
+  #_ ([^Dbi db key]
    (with-open [txn (read-txn (.-env db))]
      (let [val (get-val db txn key)]
        (txn-reset txn)
        val)))
-  ([^Dbi db ^Txn txn key] (decode (.get db txn (encode key)))))
+
+
 
 (defn put-val
   ([^Dbi db key val] (.put db (encode key) (encode val)))
@@ -129,3 +135,7 @@
 
 
    
+(comment
+
+
+  )

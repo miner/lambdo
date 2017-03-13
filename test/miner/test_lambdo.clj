@@ -11,6 +11,22 @@
                 tmp)))
 
 
-(deftest a-test
+(deftest basic-test
   (testing "Make an LMDB environment"
-    (is (create-env (make-tmpdir "LAMBDO_TEST")))))
+    (let [env (create-env (make-tmpdir "LAMBDO_TEST"))
+          db (open-db env)
+          ]
+      (is env)
+      (is db)
+      (put-val db "foo" "bar")
+      (put-val db 1 "one")
+      (put-val db "one" 1)
+      (let [txn (read-txn env)
+            foo (get-val db txn "foo")
+            x1 (get-val db txn 1)
+            one (get-val db txn "one")]
+        (txn-reset txn)
+        (is (= foo "bar"))
+        (is (= x1 "one"))
+        (is (= one 1))))))
+
