@@ -4,8 +4,6 @@ Experimental key-value store for Clojure based on LMDB
 # Not Ready
 Please don't use this.
 
-# Mascot
-
 [![Lando Calrissian](img/Lando-Calrissian.jpg)](https://en.wikipedia.org/wiki/Lando_Calrissian)
 
 # Copyright and License
