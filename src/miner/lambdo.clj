@@ -107,7 +107,7 @@
 
 
 
-(defn get-val
+(defn fetch
   ;; takes a Clojure key and returns a Clojure value.
   ([^Dbi db ^Txn txn key] (decode (.get db txn (encode key)))))
 
@@ -121,7 +121,7 @@
 
 
 
-(defn put-val
+(defn store
   ([^Dbi db key val] (.put db (encode key) (encode val)))
   ([^Dbi db ^Txn txn key val flags]
    (.put db txn (encode key) (encode val) (into-array PutFlags flags))))

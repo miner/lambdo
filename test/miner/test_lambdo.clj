@@ -18,15 +18,24 @@
           ]
       (is env)
       (is db)
-      (put-val db "foo" "bar")
-      (put-val db 1 "one")
-      (put-val db "one" 1)
+      (store db "foo" "bar")
+      (store db 1 "one")
+      (store db "one" 1)
+      (store db '[ka] '[k a])
+      (store db :a1 '{:a1 "a1" :A1 '(a 1)})
       (let [txn (read-txn env)
-            foo (get-val db txn "foo")
-            x1 (get-val db txn 1)
-            one (get-val db txn "one")]
+            foo (fetch db txn "foo")
+            x1 (fetch db txn 1)
+            one (fetch db txn "one")
+            ka (fetch db txn '[ka])
+            a1 (fetch db txn :a1)]
         (txn-reset txn)
         (is (= foo "bar"))
         (is (= x1 "one"))
-        (is (= one 1))))))
+        (is (= one 1))
+        (is (= ka '[k a]))
+        (is (= a1 '{:a1 "a1" :A1 '(a 1)}))
+        ))))
+
+
 
