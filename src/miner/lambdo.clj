@@ -1,21 +1,13 @@
 (ns miner.lambdo
   (:require [clojure.java.io :as io]
+            [miner.lambdo.util :refer :all]
             [taoensso.nippy :as nip])
   (:import (org.lmdbjava Env EnvFlags Dbi DbiFlags Txn TxnFlags PutFlags)
-           (java.nio ByteBuffer)
-           java.nio.charset.StandardCharsets ))
+           (java.nio ByteBuffer) ))
+
 
 ;; SEM: Nippy encoding/decoding byte arrays into ByteBuffer for LMDBjava to use.
 ;; Fressian was too hard to use.
-
-(defn str->bytes [s]
-  (when s
-    (.getBytes ^String s StandardCharsets/UTF_8)))
-
-(defn bytes->str [bs]
-  (when bs
-    (String. ^bytes bs StandardCharsets/UTF_8)))
-
 
 (defn create-env
   ([path] (create-env path 10))
@@ -27,7 +19,7 @@
   (.close env))
 
 (defn db-names [^Env env]
-  (map bytes->str (.getDbiNames env)))
+  (map utf8->str (.getDbiNames env)))
 
 
 ;;; SEM -- might be better to make the flagMask ourselves if we had another constructor.
@@ -109,17 +101,18 @@
 
 (defn fetch
   ;; takes a Clojure key and returns a Clojure value.
-  ([^Dbi db ^Txn txn key] (decode (.get db txn (encode key)))))
-
-
+  ([^Dbi db ^Txn txn key] (decode (.get db txn (encode key))))
+  
   ;; Not sure about making the temp txn and committing it for a read.  Maybe should reset???
-  #_ ([^Dbi db key]
-   (with-open [txn (read-txn (.-env db))]
-     (let [val (get-val db txn key)]
+  ([^Dbi db key]
+   (with-open [txn (read-txn (private-field db "env"))]
+     (let [val (fetch db txn key)]
        (txn-reset txn)
-       val)))
+       val))))
 
 
+;; return true if newly stored, false if key was already there and flags indicated not to
+;; overwrite
 
 (defn store
   ([^Dbi db key val] (.put db (encode key) (encode val)))
