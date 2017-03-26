@@ -13,7 +13,7 @@
   ([path] (create-env path 10))
   ([path size-mb] (create-env path size-mb nil))
   ([path size-mb flags]  (Env/open (io/file path) size-mb (into-array EnvFlags flags))))
-
+  
 
 (defn env-close [^Env env]
   (.close env))
@@ -81,29 +81,34 @@
 ;; buffers.
 
 ;; Concerned about too many buffers.  Maybe should try to recycle with Lambdo???
+;; Well, it looks like the internal proxy for the Env is going to manage these ByteBuffers
+;; so it needs them.  Don't try to optimize yet.  Did a simpler version that used byte
+;; arrays directly, but now I suspect that it will miss some optimizations for the
+;; supposedly fastest "unsafe" proxy.  Note: I didn't performance test anything myself so I
+;; might have guessed wrong.
 
 
-
-(defn encode ^ByteBuffer [val]
-  (let [raw ^bytes (nip/freeze val)
+(defn nippy-encode ^ByteBuffer [val]
+  (let [raw ^bytes (nip/fast-freeze val)
         ^ByteBuffer bb (ByteBuffer/allocateDirect (int (alength raw)))]
     (.flip (.put bb raw))))
 
-(defn decode [^ByteBuffer byte-buf]
+(defn nippy-decode [^ByteBuffer byte-buf]
   (let [len (.limit byte-buf)
         barr (byte-array len)]
     (.rewind byte-buf)
     (.get byte-buf barr)
-    (nip/thaw barr)))
+    (nip/fast-thaw barr)))
 
 
 
 
 (defn fetch
   ;; takes a Clojure key and returns a Clojure value.
-  ([^Dbi db ^Txn txn key] (decode (.get db txn (encode key))))
+  ([^Dbi db ^Txn txn key] (nippy-decode (.get db txn (nippy-encode key))))
   
-  ;; Not sure about making the temp txn and committing it for a read.  Maybe should reset???
+  ;; Not sure about making the temp txn and txt-reset
+  ;; SEM: FIXME private field access hack
   ([^Dbi db key]
    (with-open [txn (read-txn (private-field db "env"))]
      (let [val (fetch db txn key)]
@@ -115,14 +120,14 @@
 ;; overwrite
 
 (defn store
-  ([^Dbi db key val] (.put db (encode key) (encode val)))
+  ([^Dbi db key val] (.put db (nippy-encode key) (nippy-encode val)))
   ([^Dbi db ^Txn txn key val flags]
-   (.put db txn (encode key) (encode val) (into-array PutFlags flags))))
+   (.put db txn (nippy-encode key) (nippy-encode val) (into-array PutFlags flags))))
 
 
 
-  
 
+   
 
 
 
