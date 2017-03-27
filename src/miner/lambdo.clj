@@ -3,17 +3,23 @@
             [miner.lambdo.util :refer :all]
             [taoensso.nippy :as nip])
   (:import (org.lmdbjava Env EnvFlags Dbi DbiFlags Txn TxnFlags PutFlags)
+           (org.lmdbjava ByteArrayProxy Env$Builder)
            (java.nio ByteBuffer) ))
 
 
 ;; SEM: Nippy encoding/decoding byte arrays into ByteBuffer for LMDBjava to use.
 ;; Fressian was too hard to use.
-
+  
 (defn create-env
   ([path] (create-env path 10))
   ([path size-mb] (create-env path size-mb nil))
-  ([path size-mb flags]  (Env/open (io/file path) size-mb (into-array EnvFlags flags))))
+  (^Env [path size-mb flags]
+   (let [^Env$Builder builder (-> (Env/create ByteArrayProxy/PROXY_BA)
+                                  (.setMapSize (* size-mb 1024 1024))
+                                  (.setMaxDbs 16))]
+     ^Env (.open builder (io/file path) (into-array EnvFlags flags)))))
   
+
 
 (defn env-close [^Env env]
   (.close env))
@@ -77,30 +83,11 @@
 
 
 
-;; In theory, all Clojure values and keys will be encoded/decoded so LMDB only sees byte
-;; buffers.
+(defn nippy-encode ^bytes [val]
+  (nip/freeze val))
 
-;; Concerned about too many buffers.  Maybe should try to recycle with Lambdo???
-;; Well, it looks like the internal proxy for the Env is going to manage these ByteBuffers
-;; so it needs them.  Don't try to optimize yet.  Did a simpler version that used byte
-;; arrays directly, but now I suspect that it will miss some optimizations for the
-;; supposedly fastest "unsafe" proxy.  Note: I didn't performance test anything myself so I
-;; might have guessed wrong.
-
-
-(defn nippy-encode ^ByteBuffer [val]
-  (let [raw ^bytes (nip/fast-freeze val)
-        ^ByteBuffer bb (ByteBuffer/allocateDirect (int (alength raw)))]
-    (.flip (.put bb raw))))
-
-(defn nippy-decode [^ByteBuffer byte-buf]
-  (let [len (.limit byte-buf)
-        barr (byte-array len)]
-    (.rewind byte-buf)
-    (.get byte-buf barr)
-    (nip/fast-thaw barr)))
-
-
+(defn nippy-decode [^bytes barr]
+  (nip/thaw barr))
 
 
 (defn fetch
