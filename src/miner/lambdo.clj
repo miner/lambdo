@@ -11,6 +11,10 @@
 ;; SEM: Nippy encoding/decoding byte arrays into for LMDBjava to use.
 ;; Fressian was too hard to use, but maybe worth reconsidering.
   
+;; for debugging
+(defn sysid [x]
+  (format "%s-%H" (.getSimpleName ^Class (class x)) (System/identityHashCode x) ))
+
 
 (defn dbiflags ^"[Lorg.lmdbjava.DbiFlags;" [flags]
   (into-array DbiFlags flags))
@@ -93,27 +97,18 @@
   (nip/thaw barr))
 
 
-(defn dbi-fetch
+(defn dbi-fetch [^Dbi dbi ^Txn txn key] 
   ;; takes a Clojure key and returns a Clojure value.
-  ([^Dbi db ^Txn txn key] (nippy-decode (.get db txn (nippy-encode key))))
-  
-  ;; Not sure about making the temp txn and txt-reset
-  ;; SEM: FIXME private field access hack
-  #_ ([^Dbi db key]
-   (with-open [txn (read-txn (private-field db "env"))]
-     (let [val (dbi-fetch db txn key)]
-       (txn-reset txn)
-       val))))
-
+  (nippy-decode (.get dbi txn (nippy-encode key))))
 
 ;; return true if newly stored, false if key was already there and flags indicated not to
 ;; overwrite
 
 (defn dbi-store
-  ([^Dbi db key val] (.put db (nippy-encode key) (nippy-encode val)))
-  ([^Dbi db ^Txn txn key val] (dbi-store db txn key val nil))
-  ([^Dbi db ^Txn txn key val flags]
-   (.put db txn (nippy-encode key) (nippy-encode val) (into-array PutFlags flags))))
+  ([^Dbi dbi key val] (.put dbi (nippy-encode key) (nippy-encode val)))
+  ([^Dbi dbi ^Txn txn key val] (dbi-store dbi txn key val nil))
+  ([^Dbi dbi ^Txn txn key val flags]
+   (.put dbi txn (nippy-encode key) (nippy-encode val) (into-array PutFlags flags))))
 
 
 
@@ -175,7 +170,6 @@
           :else (do (doto txn (.commit) (.close))
                     (assoc this :txn nil)))) 
 
-;; SEM FIXME handle :missing  
 (defn fetch [ldb binkey key]
   (let [dbi (get-dbi ldb binkey)]
     (if (= dbi :missing)
@@ -185,13 +179,11 @@
                        :bin-keys (keys (:bins ldb))}))
       (if-let [txn (:txn ldb)]
         (dbi-fetch dbi txn key)
-        (let [^Env env (:env ldb)
-              txn (.txnRead env)
-              result (dbi-fetch dbi txn key)]
-          (.reset txn)
+        (let [^Txn rotxn (doto ^Txn (:read-only-txn ldb) (.renew))
+              result (dbi-fetch dbi rotxn key)]
+          (.reset rotxn)
           result)))))
 
-;;   (dbi-fetch dbi (or (:txn ldb) (:read-only-txn ldb)) key)
 
 ;; SEM FIXME, need cursor support
 (defn fetch-seq [ldb bin start end]
@@ -213,21 +205,26 @@
 
 ;; SEM FIXME: do something with options
 (defn create-ldb [dirpath size-mb options]
-  (let [ldb (map->LDB {:dirpath dirpath
-                       :env (create-env dirpath (or size-mb 10))
-                       :thread (.getId (Thread/currentThread))})]
-    ldb))
+  (let [^Env env (create-env dirpath (or size-mb 10))]
+    (map->LDB {:dirpath dirpath
+               :env env
+               :read-only-txn (doto (.txnRead env) (.reset))
+               :thread (.getId (Thread/currentThread))})))
+
 
 
 ;; SEM FIXME: do something with options
 (defn open-ldb [dirpath options]
   (let [^Env env (create-env dirpath)
-        dbinames (seq (.getDbiNames env))]
+        dbinames (seq (.getDbiNames env))
+        bins (zipmap (map nippy-decode dbinames)
+                     (map #(.openDbi env ^bytes % (dbiflags [])) dbinames))
+        rotxn (doto (.txnRead env) (.reset))]
     (map->LDB {:dirpath dirpath
                :env env
                :thread (.getId (Thread/currentThread))
-               :bins (zipmap (map nippy-decode dbinames)
-                             (map #(.openDbi env ^bytes % (dbiflags [])) dbinames))})))
+               :read-only-txn rotxn
+               :bins bins})))
 
 (defn close-ldb [^LDB ldb]
   (.close ldb))
