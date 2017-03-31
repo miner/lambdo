@@ -13,7 +13,7 @@
 
 (defn write-stuff [env]
   (is env)
-  (let [dbi (open-dbi env) ]
+  (let [dbi (open-dbi env)]
     (is dbi)
     ;; auto transactions on each store
     (dbi-store dbi "foo" "bar")
@@ -37,15 +37,36 @@
     (is (= ka '[k a]))
     (is (= a1 '{:a1 "a1" :A1 '(a 1)}))))
 
-(deftest basic-test
+(deftest low-level-test
   (testing "Make an LMDB environment"
-    (let [env (create-env (make-tmpdir "LAMBDO_TEST"))]
+    (let [^org.lmdbjava.Env env (create-env (make-tmpdir "LAMBDO_TEST"))]
       (write-stuff env)
       (read-stuff env)
       (.close env))
 
     ;; re-opening existing database and checking again
-    (let [env (create-env (make-tmpdir "LAMBDO_TEST"))]
+    (let [^org.lmdbjava.Env env (create-env (make-tmpdir "LAMBDO_TEST"))]
       (read-stuff env)
       (.close env))))
 
+
+
+(deftest simple-test
+  (testing "Simple API"
+    (let [db (-> (create-ldb (make-tmpdir "LAMBDO_SIMPLE") 10 nil)
+                 (create-bin :test1)
+                 (begin)
+                 (store :test1 :foo "foo")
+                 (store :test1 :bar 'bar/bar)
+                 (store :test1 :baz {:a 1 :b 2 :c 3})
+                 (commit))
+          foo (fetch db :test1 :foo)
+          bar (fetch db :test1 :bar)
+          baz (fetch db :test1 :baz)]
+      (close-ldb db)
+      (is (= foo "foo"))
+      (is (= bar 'bar/bar))
+      (is (= baz {:a 1 :b 2 :c 3})))))
+
+
+          

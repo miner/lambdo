@@ -31,19 +31,16 @@
      ^Env (.open builder (io/file path) (into-array EnvFlags flags)))))
   
 
-
 (defn env-close [^Env env]
   (.close env))
 
-;; obsolete
-(defn db-names [^Env env]
-  (map utf8->str (.getDbiNames env)))
 
+(defn DONT-db-close [env db]
+  ;; normally don't need to call this
+  ;; can usually just reuse the db handle
+)
 
-;;; SEM -- might be better to make the flagMask ourselves if we had another constructor.
-;;; Probably should refactor the lmdbjava Dbi class.
-
-;; Obsolete
+;; Should be obsolete, but still used in tests
 (defn open-dbi
   ;; returns Dbi
   ([env] (open-dbi env nil))
@@ -51,12 +48,6 @@
   ([^Env env ^String dbname flags]   (.openDbi env
                                                dbname
                                                (dbiflags flags))))
-
-
-(defn DONT-db-close [env db]
-  ;; normally don't need to call this
-  ;; can usually just reuse the db handle
-)
 
 
 ;; could use with-open to create txn
@@ -108,7 +99,7 @@
   
   ;; Not sure about making the temp txn and txt-reset
   ;; SEM: FIXME private field access hack
-  ([^Dbi db key]
+  #_ ([^Dbi db key]
    (with-open [txn (read-txn (private-field db "env"))]
      (let [val (dbi-fetch db txn key)]
        (txn-reset txn)
@@ -120,6 +111,7 @@
 
 (defn dbi-store
   ([^Dbi db key val] (.put db (nippy-encode key) (nippy-encode val)))
+  ([^Dbi db ^Txn txn key val] (dbi-store db txn key val nil))
   ([^Dbi db ^Txn txn key val flags]
    (.put db txn (nippy-encode key) (nippy-encode val) (into-array PutFlags flags))))
 
@@ -134,32 +126,31 @@
 ;; might want to save path too
 
 
-(defn get-dbi [ldb bin]
-  (get (:dbs ldb) bin :missing))
+(defn get-dbi [ldb binkey]
+  (get-in ldb [:bins binkey] :missing))
 
 
-(defrecord LDB [dirpath ^Env env dbs ^Txn txn txnflags ^Txn read-only-txn thread]
+(defrecord LDB [dirpath ^Env env bins ^Txn txn txnflags ^Txn read-only-txn thread]
   java.io.Closeable
   (close [this]
     (when read-only-txn (.close read-only-txn))
     (when txn (.close txn))
     (when env (.close env))
     ;; do not close the Dbi handles, just nil
-    (assoc this :env nil :txn nil :read-only-txn nil :thread nil :dbs nil)))
+    (assoc this :env nil :txn nil :read-only-txn nil :thread nil :bins nil)))
 
 
 
 
 (defn create-bin [ldb bin-key]
-  (let [dbs (:dbs ldb)
-        env (:env ldb)
+  (let [env (:env ldb)
         dbi (.openDbi ^Env env (nippy-encode bin-key) (dbiflags [DbiFlags/MDB_CREATE]))]
-    (update ldb :dbs (assoc bin-key dbi))))
+    (update ldb :bins assoc bin-key dbi)))
     
 
 (defn begin [ldb]
   (let [txn (:txn ldb)
-        env (:evn ldb)]
+        env (:env ldb)]
     (assoc ldb :txn (.txn ^Env env ^Txn txn (txnflags [])))))
 ;; but do we have to close the read-only-txn first?
   
@@ -184,16 +175,39 @@
           :else (do (doto txn (.commit) (.close))
                     (assoc this :txn nil)))) 
 
-(defn fetch [ldb bin key]
-  (dbi-fetch (:env ldb) (get-dbi ldb bin) key))
-  
+;; SEM FIXME handle :missing  
+(defn fetch [ldb binkey key]
+  (let [dbi (get-dbi ldb binkey)]
+    (if (= dbi :missing)
+      (throw (ex-info (str "Missing DBI fetching " binkey key ", not in " (sequence (keys (:bins ldb))) ".")
+                      {:binkey binkey
+                       :key key
+                       :bin-keys (keys (:bins ldb))}))
+      (if-let [txn (:txn ldb)]
+        (dbi-fetch dbi txn key)
+        (let [^Env env (:env ldb)
+              txn (.txnRead env)
+              result (dbi-fetch dbi txn key)]
+          (.reset txn)
+          result)))))
+
+;;   (dbi-fetch dbi (or (:txn ldb) (:read-only-txn ldb)) key)
+
+;; SEM FIXME, need cursor support
 (defn fetch-seq [ldb bin start end]
-  ;; SEM FIXME, need cursor support
   (list (fetch ldb bin start)
         (fetch ldb bin end)))
   
-(defn store [ldb bin key val]
-  (dbi-store (:env ldb) (get-dbi bin) key val))
+(defn store [ldb binkey key val]
+  (let [dbi (get-dbi ldb binkey)]
+    (if (= dbi :missing)
+      (throw (ex-info (str "Missing DBI for " binkey ", not in " (sequence (keys (:bins ldb))) ".")
+                      {:binkey binkey
+                       :bin-keys (keys (:bins ldb))}))
+      (do (dbi-store dbi (:txn ldb) key val)
+          ldb))))
+
+  
 ;; could add & kvs arity
 
 
@@ -202,7 +216,7 @@
   (let [ldb (map->LDB {:dirpath dirpath
                        :env (create-env dirpath (or size-mb 10))
                        :thread (.getId (Thread/currentThread))})]
-    (assoc ldb :read-only-txn (.txnRead ^Env (:env ldb)))))
+    ldb))
 
 
 ;; SEM FIXME: do something with options
@@ -212,6 +226,9 @@
     (map->LDB {:dirpath dirpath
                :env env
                :thread (.getId (Thread/currentThread))
-               :dbs (zipmap (map nippy-decode dbinames)
-                            (map #(.openDbi env ^bytes % (dbiflags [])) dbinames))})))
+               :bins (zipmap (map nippy-decode dbinames)
+                             (map #(.openDbi env ^bytes % (dbiflags [])) dbinames))})))
+
+(defn close-ldb [^LDB ldb]
+  (.close ldb))
 
