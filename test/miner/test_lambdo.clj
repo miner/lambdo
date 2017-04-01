@@ -63,10 +63,31 @@
           foo (fetch db :test1 :foo)
           bar (fetch db :test1 :bar)
           baz (fetch db :test1 :baz)]
-      (close-ldb db)
-      (is (= foo "foo"))
-      (is (= bar 'bar/bar))
-      (is (= baz {:a 1 :b 2 :c 3})))))
+      (let [db (begin db)
+            foo2 (fetch db :test1 :foo)
+            bar2 (fetch db :test1 :bar)
+            baz2 (fetch db :test1 :baz)
+            db (-> db
+                   (commit)
+                   (begin)
+                   (store :test1 :foo "BOOM")
+                   (abort)
+                   (begin)
+                   (store :test1 :bar 'BOOM)
+                   (commit))
+            foo3 (fetch db :test1 :foo)
+            bar3 (fetch db :test1 :bar)]
+        (close-ldb db)
+        (is (= foo "foo"))
+        (is (= bar 'bar/bar))
+        (is (= baz {:a 1 :b 2 :c 3}))
+        (is (= baz baz2))
+        (is (= foo foo2))
+        (is (= bar bar2))
+        (is (= foo3 foo))
+        (is (= bar3 'BOOM)) ))))
+
+
 
 
           
