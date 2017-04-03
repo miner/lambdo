@@ -115,14 +115,14 @@
 
 ;; User API starts here   
 ;; LMDB resources encapsulated in single LDB record
-;; Use Clojure immutable update semantics.
+;; Use Clojure transient update semantics.
 ;; That is, always capture the resulting object, rather than whacking in-place.
 
 ;; might want to save path too
 
 
 (defn get-dbi [ldb binkey]
-  (get-in ldb [:bins binkey] :missing))
+  (get-in ldb [:bins binkey]))
 
 
 (defrecord LDB [dirpath ^Env env bins ^Txn txn txnflags ^Txn read-only-txn thread]
@@ -137,27 +137,27 @@
 
 
 
-(defn create-bin [ldb bin-key]
+(defn create-bin! [ldb bin-key]
   (let [env (:env ldb)
         dbi (.openDbi ^Env env (nippy-encode bin-key) (dbiflags [DbiFlags/MDB_CREATE]))]
     (update ldb :bins assoc bin-key dbi)))
     
 
-(defn begin [ldb]
+(defn begin! [ldb]
   (let [txn (:txn ldb)
         env (:env ldb)]
     (assoc ldb :txn (.txn ^Env env ^Txn txn (txnflags [])))))
 ;; but do we have to close the read-only-txn first?
   
 
-(defn commit [ldb]
+(defn commit! [ldb]
   (if-let [^Txn txn (:txn ldb)]
     (let [parent (.getParent txn)]
       (.commit txn)
       (assoc ldb :txn parent))
     ldb))
 
-(defn abort [ldb]
+(defn rollback! [ldb]
   (if-let [^Txn txn (:txn ldb)]
     (let [parent (.getParent txn)]
       (.abort txn)
@@ -171,18 +171,18 @@
                     (assoc this :txn nil)))) 
 
 (defn fetch [ldb binkey key]
-  (let [dbi (get-dbi ldb binkey)]
-    (if (= dbi :missing)
-      (throw (ex-info (str "Missing DBI fetching " binkey key ", not in " (sequence (keys (:bins ldb))) ".")
-                      {:binkey binkey
-                       :key key
-                       :bin-keys (keys (:bins ldb))}))
-      (if-let [txn (:txn ldb)]
-        (dbi-fetch dbi txn key)
-        (let [^Txn rotxn (doto ^Txn (:read-only-txn ldb) (.renew))
-              result (dbi-fetch dbi rotxn key)]
-          (.reset rotxn)
-          result)))))
+  (if-let [dbi (get-dbi ldb binkey)]
+    (if-let [txn (:txn ldb)]
+      (dbi-fetch dbi txn key)
+      (let [^Txn rotxn (doto ^Txn (:read-only-txn ldb) (.renew))
+            result (dbi-fetch dbi rotxn key)]
+        (.reset rotxn)
+        result))
+    (throw (ex-info (str "Missing DBI fetching " binkey key ", not in "
+                         (sequence (keys (:bins ldb))) ".")
+                    {:binkey binkey
+                     :key key
+                     :bin-keys (keys (:bins ldb))}))))
 
 
 ;; SEM FIXME, need cursor support
@@ -190,14 +190,15 @@
   (list (fetch ldb bin start)
         (fetch ldb bin end)))
   
-(defn store [ldb binkey key val]
-  (let [dbi (get-dbi ldb binkey)]
-    (if (= dbi :missing)
-      (throw (ex-info (str "Missing DBI for " binkey ", not in " (sequence (keys (:bins ldb))) ".")
-                      {:binkey binkey
-                       :bin-keys (keys (:bins ldb))}))
-      (do (dbi-store dbi (:txn ldb) key val)
-          ldb))))
+(defn store! [ldb binkey key val]
+  (if-let [dbi (get-dbi ldb binkey)]
+    (dbi-store dbi (:txn ldb) key val)
+    (throw (ex-info (str "Missing DBI for " binkey ", not in " (sequence (keys (:bins ldb))) ".")
+                    {:binkey binkey
+                     :bin-keys (keys (:bins ldb))})))
+  ldb)
+
+
 
   
 ;; could add & kvs arity
@@ -226,6 +227,6 @@
                :read-only-txn rotxn
                :bins bins})))
 
-(defn close-ldb [^LDB ldb]
-  (.close ldb))
-
+(defn close-ldb! [^LDB ldb]
+  (.close ldb)
+  ldb)
