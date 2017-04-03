@@ -89,5 +89,114 @@
 
 
 
+;; NO, can't safely use atom, because swap! might retry.  But it mostly works.
 
-          
+(deftest atomic-test
+  (testing "Atomic test"
+    (let [db (atom (create-ldb (make-tmpdir "LAMBDO_ATOM") 10 nil))]
+      (swap! db create-bin! :test1)
+      (swap! db begin!)
+      (swap! db store! :test1 :foo "foo")
+      (swap! db store! :test1 :bar 'bar/bar)
+      (swap! db store! :test1 :baz {:a 1 :b 2 :c 3})
+      (swap! db commit!)
+      (let [foo (fetch @db :test1 :foo)
+            bar (fetch @db :test1 :bar)
+            baz (fetch @db :test1 :baz)]
+        (swap! db begin!)
+        (let [foo2 (fetch @db :test1 :foo)
+              bar2 (fetch @db :test1 :bar)
+              baz2 (fetch @db :test1 :baz)]
+          (swap! db commit!)
+          (swap! db begin!)
+          (swap! db store! :test1 :foo "BOOM")
+          (swap! db rollback!)
+          (swap! db begin!)
+          (swap! db store! :test1 :bar 'BOOM)
+          (swap! db commit!)
+          (let [foo3 (fetch @db :test1 :foo)
+                bar3 (fetch @db :test1 :bar)]
+            (swap! db close-ldb!)
+            (is (= foo "foo"))
+            (is (= bar 'bar/bar))
+            (is (= baz {:a 1 :b 2 :c 3}))
+            (is (= baz baz2))
+            (is (= foo foo2))
+            (is (= bar bar2))
+            (is (= foo3 foo))
+            (is (= bar3 'BOOM))))))))
+
+
+;; Ugly but seems to work.  Db is thread-local so it kind of makes sense
+(deftest local-var-test
+  (testing "local var test"
+    (with-local-vars [db (create-ldb (make-tmpdir "LAMBDO_VAR") 10 nil)]
+      (var-set db (create-bin! @db :test1))
+      (var-set db (begin! @db))
+      (var-set db (store! @db :test1 :foo "foo"))
+      (var-set db (store! @db :test1 :bar 'bar/bar))
+      (var-set db (store! @db :test1 :baz {:a 1 :b 2 :c 3}))
+      (var-set db (commit! @db))
+      (let [foo (fetch @db :test1 :foo)
+            bar (fetch @db :test1 :bar)
+            baz (fetch @db :test1 :baz)]
+        (var-set db (begin! @db))
+        (let [foo2 (fetch @db :test1 :foo)
+              bar2 (fetch @db :test1 :bar)
+              baz2 (fetch @db :test1 :baz)]
+          (var-set  db (commit! @db))
+          (var-set  db (begin! @db) )
+          (var-set  db (store! @db :test1 :foo "BOOM"))
+          (var-set  db (rollback! @db))
+          (var-set  db (begin! @db))
+          (var-set  db (store! @db :test1 :bar 'BOOM))
+          (var-set  db (commit! @db))
+          (let [foo3 (fetch @db :test1 :foo)
+                bar3 (fetch @db :test1 :bar)]
+            (var-set  db (close-ldb! @db))
+            (is (= foo "foo"))
+            (is (= bar 'bar/bar))
+            (is (= baz {:a 1 :b 2 :c 3}))
+            (is (= baz baz2))
+            (is (= foo foo2))
+            (is (= bar bar2))
+            (is (= foo3 foo))
+            (is (= bar3 'BOOM))))))))
+
+
+(def ^:dynamic *db* nil)
+
+(deftest def-var-test
+  (testing "dynamic var test"
+    (binding [*db* (create-ldb (make-tmpdir "LAMBDO_VAR") 10 nil)]
+      (set! *db* (create-bin! *db* :test1))
+      (set! *db* (begin! *db*))
+      (set! *db* (store! *db* :test1 :foo "foo"))
+      (set! *db* (store! *db* :test1 :bar 'bar/bar))
+      (set! *db* (store! *db* :test1 :baz {:a 1 :b 2 :c 3}))
+      (set! *db* (commit! *db*))
+      (let [foo (fetch *db* :test1 :foo)
+            bar (fetch *db* :test1 :bar)
+            baz (fetch *db* :test1 :baz)]
+        (set! *db* (begin! *db*))
+        (let [foo2 (fetch *db* :test1 :foo)
+              bar2 (fetch *db* :test1 :bar)
+              baz2 (fetch *db* :test1 :baz)]
+          (set!  *db* (commit! *db*))
+          (set!  *db* (begin! *db*) )
+          (set!  *db* (store! *db* :test1 :foo "BOOM"))
+          (set!  *db* (rollback! *db*))
+          (set!  *db* (begin! *db*))
+          (set!  *db* (store! *db* :test1 :bar 'BOOM))
+          (set!  *db* (commit! *db*))
+          (let [foo3 (fetch *db* :test1 :foo)
+                bar3 (fetch *db* :test1 :bar)]
+            (set!  *db* (close-ldb! *db*))
+            (is (= foo "foo"))
+            (is (= bar 'bar/bar))
+            (is (= baz {:a 1 :b 2 :c 3}))
+            (is (= baz baz2))
+            (is (= foo foo2))
+            (is (= bar bar2))
+            (is (= foo3 foo))
+            (is (= bar3 'BOOM))))))))

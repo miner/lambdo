@@ -128,6 +128,7 @@
 (defrecord LDB [dirpath ^Env env bins ^Txn txn txnflags ^Txn read-only-txn thread]
   java.io.Closeable
   (close [this]
+    (io!)
     (when read-only-txn (.close read-only-txn))
     (when txn (.close txn))
     (when env (.close env))
@@ -138,12 +139,14 @@
 
 
 (defn create-bin! [ldb bin-key]
+  (io!)
   (let [env (:env ldb)
         dbi (.openDbi ^Env env (nippy-encode bin-key) (dbiflags [DbiFlags/MDB_CREATE]))]
     (update ldb :bins assoc bin-key dbi)))
     
 
 (defn begin! [ldb]
+  (io!)
   (let [txn (:txn ldb)
         env (:env ldb)]
     (assoc ldb :txn (.txn ^Env env ^Txn txn (txnflags [])))))
@@ -151,6 +154,7 @@
   
 
 (defn commit! [ldb]
+  (io!)
   (if-let [^Txn txn (:txn ldb)]
     (let [parent (.getParent txn)]
       (.commit txn)
@@ -158,6 +162,7 @@
     ldb))
 
 (defn rollback! [ldb]
+  (io!)
   (if-let [^Txn txn (:txn ldb)]
     (let [parent (.getParent txn)]
       (.abort txn)
@@ -191,6 +196,7 @@
         (fetch ldb bin end)))
   
 (defn store! [ldb binkey key val]
+  (io!)
   (if-let [dbi (get-dbi ldb binkey)]
     (dbi-store dbi (:txn ldb) key val)
     (throw (ex-info (str "Missing DBI for " binkey ", not in " (sequence (keys (:bins ldb))) ".")
@@ -228,5 +234,6 @@
                :bins bins})))
 
 (defn close-ldb! [^LDB ldb]
+  (io!)
   (.close ldb)
   ldb)
