@@ -164,6 +164,51 @@
             (is (= foo3 foo))
             (is (= bar3 'BOOM))))))))
 
+;; bash in place for a local var
+(defmacro bip! [local-var update-fn & args]
+  `(var-set ~local-var (~update-fn (var-get ~local-var) ~@args)))
+
+
+;; same pattern as volatile/atom but with a local var (less overhead, single thread, no
+;; sharing)
+
+(deftest bip-local-var-test
+  (testing "local var test"
+    (with-local-vars [db (create-ldb (make-tmpdir "LAMBDO_BIP") 10 nil)]
+      (bip! db create-bin! :test1)
+      (bip! db begin!)
+      (bip! db store! :test1 :foo "foo")
+      (bip! db store! :test1 :bar 'bar/bar)
+      (bip! db store! :test1 :baz {:a 1 :b 2 :c 3})
+      (bip! db commit!)
+      (let [foo (fetch @db :test1 :foo)
+            bar (fetch @db :test1 :bar)
+            baz (fetch @db :test1 :baz)]
+        (bip! db begin!)
+        (let [foo2 (fetch @db :test1 :foo)
+              bar2 (fetch @db :test1 :bar)
+              baz2 (fetch @db :test1 :baz)]
+          (bip! db commit!)
+          (bip! db begin!)
+          (bip! db store! :test1 :foo "BOOM")
+          (bip! db rollback!)
+          (bip! db begin!)
+          (bip! db store! :test1 :bar 'BOOM)
+          (bip! db commit!)
+          (let [foo3 (fetch @db :test1 :foo)
+                bar3 (fetch @db :test1 :bar)]
+            (bip! db close-ldb!)
+            (is (= foo "foo"))
+            (is (= bar 'bar/bar))
+            (is (= baz {:a 1 :b 2 :c 3}))
+            (is (= baz baz2))
+            (is (= foo foo2))
+            (is (= bar bar2))
+            (is (= foo3 foo))
+            (is (= bar3 'BOOM))))))))
+
+
+
 
 ;; Another ugly way to use it.  Not recommended.
 (def ^:dynamic *db* nil)
