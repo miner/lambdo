@@ -89,34 +89,36 @@
 
 
 
-;; NO, can't safely use atom, because swap! might retry.  But it mostly works.
+;; No atom.  You can't safely use atom, because swap! might retry.  Also, LMDB is not
+;; thread-safe. Clojure volatile! is the appropriate thing.  The user takes responsibility
+;; for single-threaded usage and doesn't expect atomic updates.
 
-(deftest atomic-test
-  (testing "Atomic test"
-    (let [db (atom (create-ldb (make-tmpdir "LAMBDO_ATOM") 10 nil))]
-      (swap! db create-bin! :test1)
-      (swap! db begin!)
-      (swap! db store! :test1 :foo "foo")
-      (swap! db store! :test1 :bar 'bar/bar)
-      (swap! db store! :test1 :baz {:a 1 :b 2 :c 3})
-      (swap! db commit!)
+(deftest volatile-test
+  (testing "Volatile test"
+    (let [db (volatile! (create-ldb (make-tmpdir "LAMBDO_VOLA") 10 nil))]
+      (vswap! db create-bin! :test1)
+      (vswap! db begin!)
+      (vswap! db store! :test1 :foo "foo")
+      (vswap! db store! :test1 :bar 'bar/bar)
+      (vswap! db store! :test1 :baz {:a 1 :b 2 :c 3})
+      (vswap! db commit!)
       (let [foo (fetch @db :test1 :foo)
             bar (fetch @db :test1 :bar)
             baz (fetch @db :test1 :baz)]
-        (swap! db begin!)
+        (vswap! db begin!)
         (let [foo2 (fetch @db :test1 :foo)
               bar2 (fetch @db :test1 :bar)
               baz2 (fetch @db :test1 :baz)]
-          (swap! db commit!)
-          (swap! db begin!)
-          (swap! db store! :test1 :foo "BOOM")
-          (swap! db rollback!)
-          (swap! db begin!)
-          (swap! db store! :test1 :bar 'BOOM)
-          (swap! db commit!)
+          (vswap! db commit!)
+          (vswap! db begin!)
+          (vswap! db store! :test1 :foo "BOOM")
+          (vswap! db rollback!)
+          (vswap! db begin!)
+          (vswap! db store! :test1 :bar 'BOOM)
+          (vswap! db commit!)
           (let [foo3 (fetch @db :test1 :foo)
                 bar3 (fetch @db :test1 :bar)]
-            (swap! db close-ldb!)
+            (vswap! db close-ldb!)
             (is (= foo "foo"))
             (is (= bar 'bar/bar))
             (is (= baz {:a 1 :b 2 :c 3}))
@@ -125,7 +127,6 @@
             (is (= bar bar2))
             (is (= foo3 foo))
             (is (= bar3 'BOOM))))))))
-
 
 ;; Ugly but seems to work.  Db is thread-local so it kind of makes sense
 (deftest local-var-test
@@ -164,6 +165,7 @@
             (is (= bar3 'BOOM))))))))
 
 
+;; Another ugly way to use it.  Not recommended.
 (def ^:dynamic *db* nil)
 
 (deftest def-var-test
