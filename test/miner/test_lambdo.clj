@@ -215,7 +215,7 @@
 
 (deftest def-var-test
   (testing "dynamic var test"
-    (binding [*db* (create-ldb (make-tmpdir "LAMBDO_VAR") 10 nil)]
+    (binding [*db* (create-ldb (make-tmpdir "LAMBDO_VAR2") 10 nil)]
       (set! *db* (create-bin! *db* :test1))
       (set! *db* (begin! *db*))
       (set! *db* (store! *db* :test1 :foo "foo"))
