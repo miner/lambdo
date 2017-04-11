@@ -88,7 +88,6 @@
         (is (= bar3 'BOOM)) ))))
 
 
-
 ;; No atom.  You can't safely use atom, because swap! might retry.  Also, LMDB is not
 ;; thread-safe. Clojure volatile! is the appropriate thing.  The user takes responsibility
 ;; for single-threaded usage and doesn't expect atomic updates.
@@ -155,6 +154,42 @@
           (let [foo3 (fetch @db :test1 :foo)
                 bar3 (fetch @db :test1 :bar)]
             (var-set  db (close-ldb! @db))
+            (is (= foo "foo"))
+            (is (= bar 'bar/bar))
+            (is (= baz {:a 1 :b 2 :c 3}))
+            (is (= baz baz2))
+            (is (= foo foo2))
+            (is (= bar bar2))
+            (is (= foo3 foo))
+            (is (= bar3 'BOOM))))))))
+
+
+(deftest local-var3-test
+  (testing "local var test"
+    (with-local-vars [db (create-ldb (make-tmpdir "LAMBDO_VAR3") 10 nil)]
+      (set! db (create-bin! @db :test1))
+      (set! db (begin! @db))
+      (set! db (store! @db :test1 :foo "foo"))
+      (set! db (store! @db :test1 :bar 'bar/bar))
+      (set! db (store! @db :test1 :baz {:a 1 :b 2 :c 3}))
+      (set! db (commit! @db))
+      (let [foo (fetch @db :test1 :foo)
+            bar (fetch @db :test1 :bar)
+            baz (fetch @db :test1 :baz)]
+        (set! db (begin! @db))
+        (let [foo2 (fetch @db :test1 :foo)
+              bar2 (fetch @db :test1 :bar)
+              baz2 (fetch @db :test1 :baz)]
+          (set!  db (commit! @db))
+          (set!  db (begin! @db) )
+          (set!  db (store! @db :test1 :foo "BOOM"))
+          (set!  db (rollback! @db))
+          (set!  db (begin! @db))
+          (set!  db (store! @db :test1 :bar 'BOOM))
+          (set!  db (commit! @db))
+          (let [foo3 (fetch @db :test1 :foo)
+                bar3 (fetch @db :test1 :bar)]
+            (set!  db (close-ldb! @db))
             (is (= foo "foo"))
             (is (= bar 'bar/bar))
             (is (= baz {:a 1 :b 2 :c 3}))
