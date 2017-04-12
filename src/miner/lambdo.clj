@@ -26,8 +26,8 @@
 
 
 (defn create-env
-  ([path] (create-env path 10))
-  ([path size-mb] (create-env path size-mb nil))
+  (^Env [path] (create-env path 10))
+  (^Env [path size-mb] (create-env path size-mb nil))
   (^Env [path size-mb flags]
    (let [^Env$Builder builder (-> (Env/create ByteArrayProxy/PROXY_BA)
                                   (.setMapSize (* size-mb 1024 1024))
@@ -168,7 +168,6 @@
         (.abort txn)
         (set! txn parent)))
     this)
-  
 
   java.io.Closeable
   (close [this]

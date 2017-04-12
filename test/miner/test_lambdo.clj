@@ -40,13 +40,13 @@
 
 (deftest low-level-test
   (testing "Make an LMDB environment"
-    (let [^org.lmdbjava.Env env (create-env (make-tmpdir "LAMBDO_TEST"))]
+    (let [env (create-env (make-tmpdir "LAMBDO_TEST"))]
       (write-stuff env)
       (read-stuff env)
       (.close env))
 
     ;; re-opening existing database and checking again
-    (let [^org.lmdbjava.Env env (create-env (make-tmpdir "LAMBDO_TEST"))]
+    (let [env (create-env (make-tmpdir "LAMBDO_TEST"))]
       (read-stuff env)
       (.close env))))
 
@@ -54,7 +54,7 @@
 
 (deftest simple-test
   (testing "Simple API"
-    (let [^miner.lambdo.Storage storage (create-storage (make-tmpdir "LAMBDO_STORAGE"))
+    (let [storage (create-storage (make-tmpdir "LAMBDO_STORAGE"))
           test1 (create-database! storage :test1)]
       (begin! storage)
       (store! test1 :foo "foo")
