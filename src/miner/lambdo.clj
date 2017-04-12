@@ -1,7 +1,7 @@
 (ns miner.lambdo
   (:require [clojure.java.io :as io]
             [miner.lambdo.util :refer :all]
-            ;; [miner.lambdo.protocols :refer :all]
+            [miner.lambdo.protocols :refer :all]
             [taoensso.nippy :as nip])
   (:import (org.lmdbjava Env EnvFlags Dbi DbiFlags Txn TxnFlags PutFlags)
            (org.lmdbjava ByteArrayProxy Env$Builder)
@@ -114,125 +114,129 @@
 
 
 ;; User API starts here   
-;; LMDB resources encapsulated in single LDB record
-;; Use Clojure transient update semantics.
-;; That is, always capture the resulting object, rather than whacking in-place.
 
-;; might want to save path too
+(deftype Database [storage ^Dbi dbi]
+  PDatabase
+  (-fetch [this key]
+    (if-let [txn (-txn storage)]
+      (dbi-fetch dbi txn key)
+      (let [^Txn rotxn (doto ^Txn (-rotxn storage) (.renew))
+            result (dbi-fetch dbi rotxn key)]
+        (.reset rotxn)
+        result)))
+
+  (-store! [this key val]
+    (io!)
+    (dbi-store dbi (-txn storage) key val)
+    this)
+  
+  )
 
 
-(defn get-dbi [ldb binkey]
-  (get-in ldb [:bins binkey]))
+  
+(deftype Storage [dirpath
+                  ^Env env
+                  ^Txn ^:unsynchronized-mutable txn
+                  ^Txn ^:unsynchronized-mutable rotxn]
+  PStorage
+  (-txn [this] txn)
+  (-set-txn! [this tx] (set! txn tx))
+  (-rotxn [this] rotxn)
+  (-set-rotxn! [this rotx] (set! rotxn rotx))
 
+  (-open-database! [this dbkey flags]
+    (io!)
+    (let [dbi (.openDbi env (nippy-encode dbkey) (dbiflags flags))]
+      (->Database this dbi)))
 
-(defrecord LDB [dirpath ^Env env bins ^Txn txn txnflags ^Txn read-only-txn thread]
+  (-begin! [this flags]
+    (io!)
+    (set! txn (.txn env ^Txn txn (txnflags flags)))
+    this)
+
+  (-commit! [this]
+    (when txn
+      (io!)
+      (let [parent (.getParent txn)]
+        (.commit txn)
+        (set! txn parent)))
+    this)
+
+  (-rollback! [this]
+    (when txn
+      (io!)
+      (let [parent (.getParent txn)]
+        (.abort txn)
+        (set! txn parent)))
+    this)
+  
+
   java.io.Closeable
   (close [this]
     (io!)
-    (when read-only-txn (.close read-only-txn))
-    (when txn (.close txn))
-    (when env (.close env))
+    (when rotxn
+      (.close rotxn)
+      (set! rotxn nil))
+    (when txn
+      (.close txn)
+      (set! txn nil))
+    (when env
+      (.close env))
     ;; do not close the Dbi handles, just nil
-    (assoc this :env nil :txn nil :read-only-txn nil :thread nil :bins nil)))
+    this))
 
 
 
-(defn create-bin! [ldb bin-key]
-  (io!)
-  (let [env (:env ldb)
-        dbi (.openDbi ^Env env (nippy-encode bin-key) (dbiflags [DbiFlags/MDB_CREATE]))]
-    (update ldb :bins assoc bin-key dbi)))
+;; ldb is now typically a Storage
+;; database is not typically a DBI
+
     
 
-(defn begin! [ldb]
-  (io!)
-  (let [txn (:txn ldb)
-        env (:env ldb)]
-    (assoc ldb :txn (.txn ^Env env ^Txn txn (txnflags [])))))
+
+
+
 ;; but do we have to close the read-only-txn first?
   
 
-(defn commit! [ldb]
-  (io!)
-  (if-let [^Txn txn (:txn ldb)]
-    (let [parent (.getParent txn)]
-      (.commit txn)
-      (assoc ldb :txn parent))
-    ldb))
 
-(defn rollback! [ldb]
-  (io!)
-  (if-let [^Txn txn (:txn ldb)]
-    (let [parent (.getParent txn)]
-      (.abort txn)
-      (assoc ldb :txn parent))
-    ldb))
-
-(comment ;; old code
-    (cond (nil? txn) this
-          (.isReadOnly txn) (do (doto txn (.reset) (.renew)) this)
-          :else (do (doto txn (.commit) (.close))
-                    (assoc this :txn nil)))) 
-
-(defn fetch [ldb binkey key]
-  (if-let [dbi (get-dbi ldb binkey)]
-    (if-let [txn (:txn ldb)]
-      (dbi-fetch dbi txn key)
-      (let [^Txn rotxn (doto ^Txn (:read-only-txn ldb) (.renew))
-            result (dbi-fetch dbi rotxn key)]
-        (.reset rotxn)
-        result))
-    (throw (ex-info (str "Missing DBI fetching " binkey key ", not in "
-                         (sequence (keys (:bins ldb))) ".")
-                    {:binkey binkey
-                     :key key
-                     :bin-keys (keys (:bins ldb))}))))
 
 
 ;; SEM FIXME, need cursor support
-(defn fetch-seq [ldb bin start end]
+#_ (defn fetch-seq [ldb bin start end]
   (list (fetch ldb bin start)
         (fetch ldb bin end)))
   
-(defn store! [ldb binkey key val]
-  (io!)
-  (if-let [dbi (get-dbi ldb binkey)]
-    (dbi-store dbi (:txn ldb) key val)
-    (throw (ex-info (str "Missing DBI for " binkey ", not in " (sequence (keys (:bins ldb))) ".")
-                    {:binkey binkey
-                     :bin-keys (keys (:bins ldb))})))
-  ldb)
-
-
 
   
-;; could add & kvs arity
-
 
 ;; SEM FIXME: do something with options
-(defn create-ldb [dirpath size-mb options]
+(defn open-storage ^Storage [dirpath & {:keys [size-mb create]}]
   (let [^Env env (create-env dirpath (or size-mb 10))]
-    (map->LDB {:dirpath dirpath
-               :env env
-               :read-only-txn (doto (.txnRead env) (.reset))
-               :thread (.getId (Thread/currentThread))})))
+    (->Storage dirpath
+               env
+               nil
+               (doto (.txnRead env) (.reset)))))
 
+(defn create-storage ^Storage [dirpath & {:keys [size-mb]}]
+  (open-storage dirpath :size-mb size-mb :create true))
 
-
-;; SEM FIXME: do something with options
-(defn open-ldb [dirpath options]
-  (let [^Env env (create-env dirpath)
-        dbinames (seq (.getDbiNames env))
-        bins (zipmap (map nippy-decode dbinames)
-                     (map #(.openDbi env ^bytes % (dbiflags [])) dbinames))
-        rotxn (doto (.txnRead env) (.reset))]
-    (map->LDB {:dirpath dirpath
-               :env env
-               :thread (.getId (Thread/currentThread))
-               :read-only-txn rotxn
-               :bins bins})))
-
-(defn close-ldb! [^LDB ldb]
+(defn close-storage! [^Storage ldb]
   (io!)
   (.close ldb)
   ldb)
+
+(defn fetch [db key] (-fetch db key))
+
+(defn store! [db key val] (-store! db key val))
+
+(defn open-database [storage dbkey]
+  (-open-database! storage dbkey nil))
+
+(defn create-database! [storage dbkey]
+  (-open-database! storage dbkey [DbiFlags/MDB_CREATE]))
+
+(defn begin! [storage] (-begin! storage nil))
+
+(defn commit! [storage] (-commit! storage))
+
+(defn rollback! [storage] (-rollback! storage))
