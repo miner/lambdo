@@ -140,9 +140,8 @@
                   ^Txn ^:unsynchronized-mutable rotxn]
   PStorage
   (-txn [this] txn)
-  (-set-txn! [this tx] (set! txn tx))
+
   (-rotxn [this] rotxn)
-  (-set-rotxn! [this rotx] (set! rotxn rotx))
 
   (-open-database! [this dbkey flags]
     (io!)
