@@ -187,15 +187,8 @@
 
 
 ;; ldb is now typically a Storage
-;; database is not typically a DBI
+;; database is now typically a DBI
 
-    
-
-
-
-
-;; but do we have to close the read-only-txn first?
-  
 
 
 
@@ -208,7 +201,8 @@
 
   
 
-;; SEM FIXME: do something with options
+;; SEM FIXME: do something with options,  create ignored
+
 (defn open-storage ^Storage [dirpath & {:keys [size-mb create]}]
   (let [^Env env (create-env dirpath (or size-mb 10))]
     (->Storage dirpath
