@@ -54,7 +54,7 @@
 
 (deftest simple-test
   (testing "Simple API"
-    (let [storage (create-storage (make-tmpdir "LAMBDO_STORAGE"))
+    (let [storage (create-storage! (make-tmpdir "LAMBDO_STORAGE"))
           test1 (create-database! storage :test1)]
       (begin! storage)
       (store! test1 :foo "foo")

@@ -209,7 +209,7 @@
                nil
                (doto (.txnRead env) (.reset)))))
 
-(defn create-storage ^Storage [dirpath & {:keys [size-mb]}]
+(defn create-storage! ^Storage [dirpath & {:keys [size-mb]}]
   (open-storage dirpath :size-mb size-mb :create true))
 
 (defn close-storage! [^Storage ldb]
