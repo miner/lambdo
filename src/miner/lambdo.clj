@@ -1,11 +1,13 @@
 (ns miner.lambdo
   (:require [clojure.java.io :as io]
+            [clojure.edn :as edn]
             [miner.lambdo.util :refer :all]
             [miner.lambdo.protocols :refer :all]
             [taoensso.nippy :as nip])
-  (:import (org.lmdbjava Env EnvFlags Dbi DbiFlags Txn TxnFlags PutFlags)
-           (org.lmdbjava ByteArrayProxy Env$Builder)
-           (java.nio ByteBuffer) ))
+  (:import (org.lmdbjava Env EnvFlags Dbi DbiFlags Txn TxnFlags PutFlags
+                         ByteArrayProxy Env$Builder
+                         CursorIterator CursorIterator$KeyVal CursorIterator$IteratorType) ))
+
 
 
 ;; SEM: Nippy encoding/decoding byte arrays into for LMDBjava to use.
@@ -54,6 +56,8 @@
                                                (dbiflags flags))))
 
 
+
+
 ;; could use with-open to create txn
 ;; but it's a feature that txn can be recycled with reset and renew so you don't always want
 ;; to close them
@@ -88,28 +92,50 @@
 (defn txn-close [^Txn txn]
   (.close txn))
 
+;; Note: we want to preserve lexigraphical sorting of keys so we can't use nippy encoding.
+;; We're using edn strings instead.
+(defn key-encode ^bytes [val]
+  (.getBytes (pr-str val)))
 
+(defn key-decode [^bytes barr]
+  (edn/read-string (String. barr)))
 
-(defn nippy-encode ^bytes [val]
-  (nip/freeze val))
+(defn val-encode ^bytes [val]
+  (nip/fast-freeze val))
 
-(defn nippy-decode [^bytes barr]
-  (nip/thaw barr))
+(defn val-decode [^bytes barr]
+  (nip/fast-thaw barr))
 
 
 (defn dbi-fetch [^Dbi dbi ^Txn txn key] 
   ;; takes a Clojure key and returns a Clojure value.
-  (nippy-decode (.get dbi txn (nippy-encode key))))
+  (val-decode (.get dbi txn (key-encode key))))
 
 ;; return true if newly stored, false if key was already there and flags indicated not to
 ;; overwrite
 
 (defn dbi-store
-  ([^Dbi dbi key val] (.put dbi (nippy-encode key) (nippy-encode val)))
+  ([^Dbi dbi key val] (.put dbi (key-encode key) (val-encode val)))
   ([^Dbi dbi ^Txn txn key val] (dbi-store dbi txn key val nil))
   ([^Dbi dbi ^Txn txn key val flags]
-   (.put dbi txn (nippy-encode key) (nippy-encode val) (into-array PutFlags flags))))
+   (.put dbi txn (key-encode key) (val-encode val) (into-array PutFlags flags))))
 
+
+(defn dbi-reduce [^Dbi dbi ^Txn txn f3 init start-key rev?]
+  (let [^CursorIterator iter (.iterate dbi txn (when start-key (key-encode start-key))
+                                       (if rev?
+                                         CursorIterator$IteratorType/BACKWARD
+                                         CursorIterator$IteratorType/FORWARD))]
+    (loop [res init]
+      (if (.hasNext iter)
+        (let [^CursorIterator$KeyVal kv (.next iter)
+              k (key-decode ^bytes (.key kv))
+              v (val-decode ^bytes (.val kv))
+              res (f3 res k v)]
+          (if (reduced? res)
+            @res
+            (recur res)))
+        res))))
 
 
 
@@ -129,7 +155,14 @@
     (io!)
     (dbi-store dbi (-txn storage) key val)
     this)
-  
+
+  (-db-reduce [this f3 init start rev?]
+    (if-let [txn (-txn storage)]
+      (dbi-reduce dbi txn f3 init start rev?)
+      (let [^Txn rotxn (doto ^Txn (-rotxn storage) (.renew))
+            result (dbi-reduce dbi rotxn f3 init start rev?)]
+        (.reset rotxn)
+        result)))
   )
 
 
@@ -145,7 +178,7 @@
 
   (-open-database! [this dbkey flags]
     (io!)
-    (let [dbi (.openDbi env (nippy-encode dbkey) (dbiflags flags))]
+    (let [dbi (.openDbi env (key-encode dbkey) (dbiflags flags))]
       (->Database this dbi)))
 
   (-begin! [this flags]
@@ -232,3 +265,12 @@
 (defn commit! [storage] (-commit! storage))
 
 (defn rollback! [storage] (-rollback! storage))
+
+
+(defn reduce-db
+  ([f3 init db] (reduce-db f3 init db nil))
+  ([f3 init db start-key] (reduce-db f3 init db start-key false))
+  ([f3 init db start-key reverse?]
+     (-db-reduce db f3 init start-key reverse?)))
+
+       

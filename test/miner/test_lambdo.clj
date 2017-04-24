@@ -7,7 +7,7 @@
 ;; just for hacking, normally you'll want to use a permanent dir
 (defn make-tmpdir
   ([] (make-tmpdir "LAMBDO"))
-  ([basename] (let [tmp (io/file (System/getenv "TMPDIR") basename ".")]
+  ([basename] (let [tmp (io/file (System/getenv "TMPDIR") (str basename) ".")]
                 (io/make-parents tmp)
                 tmp)))
 
@@ -51,33 +51,41 @@
       (.close env))))
 
 
-
 (deftest simple-test
   (testing "Simple API"
-    (let [storage (create-storage! (make-tmpdir "LAMBDO_STORAGE"))
+    (let [pathname (make-tmpdir (str "LAMBDO_TEST_" (System/currentTimeMillis)))
+          storage (create-storage! pathname)
           test1 (create-database! storage :test1)]
+      (println "simple-test path:" (str pathname))
       (begin! storage)
-      (store! test1 :foo "foo")
+      (store! test1 :aaaaa "five")
+      (store! test1 :foob "foo")
       (store! test1 :bar 'bar/bar)
       (store! test1 :baz {:a 1 :b 2 :c 3})
       (commit! storage)
-      (let [foo (fetch test1 :foo)
+      (let [foo (fetch test1 :foob)
             bar (fetch test1 :bar)
             baz (fetch test1 :baz)]
         (begin! storage)
-        (let [foo2 (fetch test1 :foo)
+        (let [foo2 (fetch test1 :foob)
               bar2 (fetch test1 :bar)
               baz2 (fetch test1 :baz)]
           (commit! storage)
           (begin! storage)
-          (store! test1 :foo "BOOM")
+          (store! test1 :foob "BOOM")
           (rollback! storage)
           (begin! storage)
           (store! test1 :bar 'BOOM)
           (commit! storage)
-          (let [foo3 (fetch test1 :foo)
-                bar3 (fetch test1 :bar)]
+          (let [foo3 (fetch test1 :foob)
+                bar3 (fetch test1 :bar)
+                all-test1 (reduce-db conj [] test1)
+                rev-test1 (reduce-db conj [] test1 nil true)
+                fob-test1 (reduce-db conj [] test1 :dobzy)]
             (close-storage! storage)
+            (is (= all-test1 '[:aaaaa "five" :bar BOOM :baz {:a 1, :b 2, :c 3} :foob "foo"]))
+            (is (= rev-test1 '[:foob "foo" :baz {:a 1, :b 2, :c 3} :bar BOOM :aaaaa "five"]))
+            (is (= fob-test1 [:foob "foo"]))
             (is (= foo "foo"))
             (is (= bar 'bar/bar))
             (is (= baz {:a 1 :b 2 :c 3}))
