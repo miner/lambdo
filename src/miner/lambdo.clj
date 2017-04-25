@@ -140,6 +140,18 @@
             (recur res)))
         res))))
 
+(defn dbi-keys [^Dbi dbi ^Txn txn start-key rev?]
+  (let [^CursorIterator iter (.iterate dbi txn (when start-key (key-encode start-key))
+                                       (if rev?
+                                         CursorIterator$IteratorType/BACKWARD
+                                         CursorIterator$IteratorType/FORWARD))]
+    (loop [res []]
+      (if (.hasNext iter)
+        (let [^CursorIterator$KeyVal kv (.next iter)
+              k (key-decode ^bytes (.key kv))]
+          (recur (conj res k)))
+        res))))
+
 
 
 ;; User API starts here   
@@ -158,6 +170,14 @@
     (io!)
     (dbi-store dbi (-txn storage) key val)
     this)
+
+  (-db-keys [this start rev?]
+    (if-let [txn (-txn storage)]
+      (dbi-keys dbi txn start rev?)
+      (let [^Txn rotxn (doto ^Txn (-rotxn storage) (.renew))
+            result (dbi-keys dbi rotxn start rev?)]
+        (.reset rotxn)
+        result)))
 
   (-db-reduce [this f3 init start rev?]
     (if-let [txn (-txn storage)]
@@ -276,4 +296,10 @@
   ([f3 init db start-key reverse?]
      (-db-reduce db f3 init start-key reverse?)))
 
-       
+(defn keys-db
+  ([db] (keys-db db nil))
+  ([db start-key] (keys-db db start-key false))
+  ([db start-key reverse?]
+   (-db-keys db start-key reverse?)))
+
+
