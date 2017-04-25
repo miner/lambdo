@@ -4,7 +4,8 @@
             [miner.lambdo.util :refer :all]
             [miner.lambdo.protocols :refer :all]
             [taoensso.nippy :as nip])
-  (:import (org.lmdbjava Env EnvFlags Dbi DbiFlags Txn TxnFlags PutFlags
+  (:import (java.nio.charset StandardCharsets)
+           (org.lmdbjava Env EnvFlags Dbi DbiFlags Txn TxnFlags PutFlags
                          ByteArrayProxy Env$Builder
                          CursorIterator CursorIterator$KeyVal CursorIterator$IteratorType) ))
 
@@ -93,12 +94,14 @@
   (.close txn))
 
 ;; Note: we want to preserve lexigraphical sorting of keys so we can't use nippy encoding.
-;; We're using edn strings instead.
+;; We're using edn strings instead.  UTF_8 should be good for mostly ASCII strings, and safe for
+;; cross-platform use.
+
 (defn key-encode ^bytes [val]
-  (.getBytes (pr-str val)))
+  (.getBytes (pr-str val) StandardCharsets/UTF_8))
 
 (defn key-decode [^bytes barr]
-  (edn/read-string (String. barr)))
+  (edn/read-string (String. barr StandardCharsets/UTF_8)))
 
 (defn val-encode ^bytes [val]
   (nip/fast-freeze val))
