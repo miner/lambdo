@@ -170,19 +170,21 @@
           (recur (conj res k)))
         res))))
 
-
+;; may only be used within Database functions, assumes access to Database fields
+(defmacro -Database-with-txn [txn & body]
+  `(if-let [~txn (-txn ~'storage)]
+     (do ~@body)
+     (let [~txn ^Txn (-rotxn ~'storage)
+            result# (do (.renew ~txn) ~@body)]
+        (.reset ~txn)
+        result#)))
 
 ;; User API starts here   
 
 (deftype Database [storage ^Dbi dbi]
   PDatabase
   (-fetch [this key]
-    (if-let [txn (-txn storage)]
-      (dbi-fetch dbi txn key)
-      (let [^Txn rotxn (doto ^Txn (-rotxn storage) (.renew))
-            result (dbi-fetch dbi rotxn key)]
-        (.reset rotxn)
-        result)))
+    (-Database-with-txn txn (dbi-fetch dbi txn key)))
 
   (-store! [this key val]
     (io!)
@@ -190,28 +192,13 @@
     this)
 
   (-db-keys [this start rev?]
-    (if-let [txn (-txn storage)]
-      (dbi-keys dbi txn start rev?)
-      (let [^Txn rotxn (doto ^Txn (-rotxn storage) (.renew))
-            result (dbi-keys dbi rotxn start rev?)]
-        (.reset rotxn)
-        result)))
+    (-Database-with-txn txn (dbi-keys dbi txn start rev?)))
 
   (-db-reduce [this f3 init start rev?]
-    (if-let [txn (-txn storage)]
-      (dbi-reduce dbi txn f3 init start rev?)
-      (let [^Txn rotxn (doto ^Txn (-rotxn storage) (.renew))
-            result (dbi-reduce dbi rotxn f3 init start rev?)]
-        (.reset rotxn)
-        result)))
+    (-Database-with-txn txn (dbi-reduce dbi txn f3 init start rev?)))
 
   (-db-transduce [this xform f init start rev?]
-    (if-let [txn (-txn storage)]
-      (dbi-transduce dbi txn xform f init start rev?)
-      (let [^Txn rotxn (doto ^Txn (-rotxn storage) (.renew))
-            result (dbi-transduce dbi rotxn xform f init start rev?)]
-        (.reset rotxn)
-        result)))
+    (-Database-with-txn txn (dbi-transduce dbi txn xform f init start rev?)))
   
   )
 
