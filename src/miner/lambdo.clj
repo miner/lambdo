@@ -5,6 +5,7 @@
             [miner.lambdo.protocols :refer :all]
             [taoensso.nippy :as nip])
   (:import (java.nio.charset StandardCharsets)
+           (clojure.lang MapEntry)
            (org.lmdbjava Env EnvFlags Dbi DbiFlags Txn TxnFlags PutFlags
                          ByteArrayProxy Env$Builder
                          CursorIterator CursorIterator$KeyVal CursorIterator$IteratorType) ))
@@ -140,6 +141,23 @@
             (recur res)))
         res))))
 
+(defn dbi-transduce [^Dbi dbi ^Txn txn xform f init start-key rev?]
+  (let [^CursorIterator iter (.iterate dbi txn (when start-key (key-encode start-key))
+                                       (if rev?
+                                         CursorIterator$IteratorType/BACKWARD
+                                         CursorIterator$IteratorType/FORWARD))
+        xf (xform f)]
+    (loop [res init]
+      (if (.hasNext iter)
+        (let [^CursorIterator$KeyVal kv (.next iter)
+              k (key-decode ^bytes (.key kv))
+              v (val-decode ^bytes (.val kv))
+              res (xf res (MapEntry/create k v))]
+          (if (reduced? res)
+            @res
+            (recur res)))
+        (f res)))))
+
 (defn dbi-keys [^Dbi dbi ^Txn txn start-key rev?]
   (let [^CursorIterator iter (.iterate dbi txn (when start-key (key-encode start-key))
                                        (if rev?
@@ -186,6 +204,15 @@
             result (dbi-reduce dbi rotxn f3 init start rev?)]
         (.reset rotxn)
         result)))
+
+  (-db-transduce [this xform f init start rev?]
+    (if-let [txn (-txn storage)]
+      (dbi-transduce dbi txn xform f init start rev?)
+      (let [^Txn rotxn (doto ^Txn (-rotxn storage) (.renew))
+            result (dbi-transduce dbi rotxn xform f init start rev?)]
+        (.reset rotxn)
+        result)))
+  
   )
 
 
@@ -296,10 +323,17 @@
   ([f3 init db start-key reverse?]
      (-db-reduce db f3 init start-key reverse?)))
 
+
+(defn transduce-db
+  ([xform f init db] (transduce-db xform f init db nil))
+  ([xform f init db start-key] (transduce-db xform f init db start-key false))
+  ([xform f init db start-key reverse?]
+     (-db-transduce db xform f init start-key reverse?)))
+
+
 (defn keys-db
   ([db] (keys-db db nil))
   ([db start-key] (keys-db db start-key false))
   ([db start-key reverse?]
    (-db-keys db start-key reverse?)))
-
 
