@@ -4,12 +4,9 @@
             [miner.lambdo.impl :refer :all]
             [miner.lambdo.protocols :refer :all]
             [taoensso.nippy :as nip])
-  (:import (java.nio.charset StandardCharsets)
-           (clojure.lang MapEntry)
-           (miner.lambdo.impl Storage Database)
-           (org.lmdbjava Env EnvFlags Dbi DbiFlags Txn TxnFlags PutFlags
-                         ByteArrayProxy Env$Builder
-                         CursorIterator CursorIterator$KeyVal CursorIterator$IteratorType) ))
+  (:import (miner.lambdo.impl Storage Database)
+           (org.lmdbjava Env EnvFlags Dbi DbiFlags)))
+
 
 
 
