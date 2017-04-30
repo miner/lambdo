@@ -122,15 +122,17 @@
                                        (if rev?
                                          CursorIterator$IteratorType/BACKWARD
                                          CursorIterator$IteratorType/FORWARD))]
-    (loop [res init]
+    (loop [res init check-first (and rev? start-key)]
       (if (.hasNext iter)
         (let [^CursorIterator$KeyVal kv (.next iter)
-              k (key-decode ^bytes (.key kv))
-              v (val-decode ^bytes (.val kv))
-              res (f3 res k v)]
-          (if (reduced? res)
-            @res
-            (recur res)))
+              k (key-decode ^bytes (.key kv))]
+          (if (and check-first (not= k start-key))
+            (recur res nil)
+            (let [v (val-decode ^bytes (.val kv))
+                  res (f3 res k v)]
+              (if (reduced? res)
+                @res
+                (recur res nil)))))
         res))))
 
 (defn dbi-transduce [^Dbi dbi ^Txn txn xform f init start-key rev?]
@@ -139,15 +141,17 @@
                                          CursorIterator$IteratorType/BACKWARD
                                          CursorIterator$IteratorType/FORWARD))
         xf (xform f)]
-    (loop [res init]
+    (loop [res init check-first (and rev? start-key)]
       (if (.hasNext iter)
         (let [^CursorIterator$KeyVal kv (.next iter)
-              k (key-decode ^bytes (.key kv))
-              v (val-decode ^bytes (.val kv))
-              res (xf res (MapEntry/create k v))]
-          (if (reduced? res)
-            @res
-            (recur res)))
+              k (key-decode ^bytes (.key kv))]
+          (if (and check-first (not= k start-key))
+            (recur res nil)
+            (let [v (val-decode ^bytes (.val kv))
+                  res (xf res (MapEntry/create k v))]
+              (if (reduced? res)
+                @res
+                (recur res nil)))))
         (f res)))))
 
 (defn dbi-reduce-keys [^Dbi dbi ^Txn txn f init start-key rev?]
@@ -155,14 +159,16 @@
                                        (if rev?
                                          CursorIterator$IteratorType/BACKWARD
                                          CursorIterator$IteratorType/FORWARD))]
-    (loop [res init]
+    (loop [res init check-first (and rev? start-key)]
       (if (.hasNext iter)
         (let [^CursorIterator$KeyVal kv (.next iter)
-              k (key-decode ^bytes (.key kv))
-              res (f res k)]
-          (if (reduced? res)
-            @res
-            (recur res)))
+              k (key-decode ^bytes (.key kv))]
+          (if (and check-first (not= k start-key))
+            (recur res nil)
+            (let [res (f res k)]
+              (if (reduced? res)
+                @res
+                (recur res nil)))))
         res))))
 
 ;; may only be used within Database functions, assumes access to Database fields
