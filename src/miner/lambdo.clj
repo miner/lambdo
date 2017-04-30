@@ -44,9 +44,6 @@
 
 (defn rollback! [storage] (-rollback! storage))
 
-;; Note:  start-key positions at start-key or "next" if not present.  Can be a bit strange
-;; for going backwards from non-existing start-key (might seem like one too many).
-
 (defn reduce-db
   ([f3 init db] (reduce-db f3 init db nil))
   ([f3 init db start-key] (reduce-db f3 init db start-key false))
