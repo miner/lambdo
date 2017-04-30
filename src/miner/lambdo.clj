@@ -1,16 +1,14 @@
 (ns miner.lambdo
   (:require [clojure.java.io :as io]
-            [clojure.edn :as edn]
             [miner.lambdo.impl :refer :all]
-            [miner.lambdo.protocols :refer :all]
-            [taoensso.nippy :as nip])
+            [miner.lambdo.protocols :refer :all])
   (:import (miner.lambdo.impl Storage Database)
            (org.lmdbjava Env EnvFlags Dbi DbiFlags)))
 
 
 
 
-;; SEM FIXME: do something with options,  create ignored
+;; SEM FIXME: do something with options,  `create` ignored
 
 (defn open-storage ^Storage [dirpath & {:keys [size-mb create]}]
   (let [^Env env (create-env dirpath (or size-mb 10))]
@@ -20,7 +18,10 @@
                (doto (.txnRead env) (.reset)))))
 
 (defn create-storage! ^Storage [dirpath & {:keys [size-mb]}]
-  (open-storage dirpath :size-mb size-mb :create true))
+  (let [base (io/file dirpath)
+        filepath (if (= (.getName base) ".") base (io/file base "."))]
+    (io/make-parents filepath)
+    (open-storage filepath :size-mb size-mb :create true)))
 
 (defn close-storage! [^Storage storage]
   (io!)
@@ -43,13 +44,20 @@
 
 (defn rollback! [storage] (-rollback! storage))
 
+;; Note:  start-key positions at start-key or "next" if not present.  Can be a bit strange
+;; for going backwards from non-existing start-key (might seem like one too many).
 
 (defn reduce-db
   ([f3 init db] (reduce-db f3 init db nil))
   ([f3 init db start-key] (reduce-db f3 init db start-key false))
   ([f3 init db start-key reverse?]
-     (-db-reduce db f3 init start-key reverse?)))
+     (-db-reduce-kv db f3 init start-key reverse?)))
 
+(defn reduce-keys
+  ([f init db] (reduce-keys f init db nil))
+  ([f init db start-key] (reduce-keys f init db start-key false))
+  ([f init db start-key reverse?]
+     (-db-reduce-keys db f init start-key reverse?)))
 
 (defn transduce-db
   ([xform f init db] (transduce-db xform f init db nil))
@@ -62,5 +70,28 @@
   ([db] (keys-db db nil))
   ([db start-key] (keys-db db start-key false))
   ([db start-key reverse?]
-   (-db-keys db start-key reverse?)))
+   (-db-reduce-keys db conj [] start-key reverse?)))
 
+
+(defn next-key [db key]
+  (reduce-keys (fn [_ k] (when (not= key k) (reduced k)))
+             nil
+             db
+             key))
+
+;; tricky way to get second, or first when key is nil
+;; be careful about an empty database (that's what init is () and we take `first` on result)
+(defn prev-key [db key]
+  (first (reduce-keys (fn [res k]
+                        (when (or (not key) (and (not res) (not= key k)))
+                          (reduced (list k))))
+                      ()
+                      db
+                      key
+                      true)))
+
+(defn first-key [db]
+  (next-key db nil))
+
+(defn last-key [db]
+  (prev-key db nil))

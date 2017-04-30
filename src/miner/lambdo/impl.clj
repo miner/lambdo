@@ -117,7 +117,7 @@
    (.put dbi txn (key-encode key) (val-encode val) (into-array PutFlags flags))))
 
 
-(defn dbi-reduce [^Dbi dbi ^Txn txn f3 init start-key rev?]
+(defn dbi-reduce-kv [^Dbi dbi ^Txn txn f3 init start-key rev?]
   (let [^CursorIterator iter (.iterate dbi txn (when start-key (key-encode start-key))
                                        (if rev?
                                          CursorIterator$IteratorType/BACKWARD
@@ -150,16 +150,19 @@
             (recur res)))
         (f res)))))
 
-(defn dbi-keys [^Dbi dbi ^Txn txn start-key rev?]
+(defn dbi-reduce-keys [^Dbi dbi ^Txn txn f init start-key rev?]
   (let [^CursorIterator iter (.iterate dbi txn (when start-key (key-encode start-key))
                                        (if rev?
                                          CursorIterator$IteratorType/BACKWARD
                                          CursorIterator$IteratorType/FORWARD))]
-    (loop [res []]
+    (loop [res init]
       (if (.hasNext iter)
         (let [^CursorIterator$KeyVal kv (.next iter)
-              k (key-decode ^bytes (.key kv))]
-          (recur (conj res k)))
+              k (key-decode ^bytes (.key kv))
+              res (f res k)]
+          (if (reduced? res)
+            @res
+            (recur res)))
         res))))
 
 ;; may only be used within Database functions, assumes access to Database fields
@@ -180,14 +183,16 @@
 
   (-store! [this key val]
     (io!)
-    (dbi-store dbi (-txn storage) key val)
+    (if-let [tx (-txn storage)]
+      (dbi-store dbi tx key val)
+      (dbi-store dbi key val))
     this)
 
-  (-db-keys [this start rev?]
-    (-Database-with-txn txn (dbi-keys dbi txn start rev?)))
+  (-db-reduce-keys [this f init start rev?]
+    (-Database-with-txn txn (dbi-reduce-keys dbi txn f init start rev?)))
 
-  (-db-reduce [this f3 init start rev?]
-    (-Database-with-txn txn (dbi-reduce dbi txn f3 init start rev?)))
+  (-db-reduce-kv [this f3 init start rev?]
+    (-Database-with-txn txn (dbi-reduce-kv dbi txn f3 init start rev?)))
 
   (-db-transduce [this xform f init start rev?]
     (-Database-with-txn txn (dbi-transduce dbi txn xform f init start rev?)))

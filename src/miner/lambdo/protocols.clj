@@ -4,9 +4,9 @@
 (defprotocol PDatabase
   (-fetch [this key])
   (-store! [this key val])
-  (-db-reduce [this f3 init start rev?])
-  (-db-transduce [this xform f init start rev?])
-  (-db-keys [this start rev?]))
+  (-db-reduce-keys [this f init start rev?])
+  (-db-reduce-kv [this f3 init start rev?])
+  (-db-transduce [this xform f init start rev?]))
 
 (defprotocol PStorage
   (-open-database! [this dbkey flags])
