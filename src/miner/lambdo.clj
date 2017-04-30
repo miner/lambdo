@@ -175,9 +175,9 @@
   `(if-let [~txn (-txn ~'storage)]
      (do ~@body)
      (let [~txn ^Txn (-rotxn ~'storage)
-            result# (do (.renew ~txn) ~@body)]
-        (.reset ~txn)
-        result#)))
+           result# (do (.renew ~txn) ~@body)]
+       (.reset ~txn)
+       result#)))
 
 ;; User API starts here   
 
