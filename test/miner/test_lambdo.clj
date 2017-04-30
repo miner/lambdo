@@ -1,7 +1,7 @@
 (ns miner.test-lambdo
   (:require [clojure.test :refer :all]
             [clojure.java.io :as io]
-            ;;[miner.lambdo.protocols :refer :all]
+            [miner.lambdo.impl :refer :all]
             [miner.lambdo :refer :all]))
 
 ;; just for hacking, normally you'll want to use a permanent dir
