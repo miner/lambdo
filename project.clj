@@ -1,5 +1,5 @@
-(defproject com.velisco/lambdo "0.1.0-SNAPSHOT"
-  :description "FIXME: write description"
+(defproject com.velisco/lambdo "0.1.1"
+  :description "Lambdo, Clojure key/value database based on LMDB"
   :url "https://github.com/miner/lambdo"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
