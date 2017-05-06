@@ -2,7 +2,6 @@
 
 
 (defprotocol PDatabase
-  (-fetch [this key])
   (-store! [this key val])
   (-db-reduce-keys [this f init start rev?])
   (-db-reduce-kv [this f3 init start rev?])

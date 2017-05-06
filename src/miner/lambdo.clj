@@ -28,7 +28,6 @@
   (.close storage)
   storage)
 
-(defn fetch [db key] (-fetch db key))
 
 (defn store! [db key val] (-store! db key val))
 

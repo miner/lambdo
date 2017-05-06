@@ -5,7 +5,7 @@
             [taoensso.nippy :as nip])
   (:import (java.nio.charset StandardCharsets)
            (clojure.lang MapEntry)
-           (org.lmdbjava Env EnvFlags Dbi DbiFlags Txn TxnFlags PutFlags
+           (org.lmdbjava Env EnvFlags Dbi DbiFlags Txn TxnFlags PutFlags Stat
                          ByteArrayProxy Env$Builder
                          CursorIterator CursorIterator$KeyVal CursorIterator$IteratorType) ))
 
@@ -99,14 +99,32 @@
 (defn val-encode ^bytes [val]
   (nip/fast-freeze val))
 
-(defn val-decode [^bytes barr]
-  (nip/fast-thaw barr))
+(defn val-decode [barr]
+  (when barr
+    (nip/fast-thaw ^bytes barr)))
 
 
 (defn dbi-fetch [^Dbi dbi ^Txn txn key] 
   ;; takes a Clojure key and returns a Clojure value.
   (val-decode (.get dbi txn (key-encode key))))
 
+
+;; SEM: FIXME.  There must be a better way.  Maybe lower level.  But for now, we need
+;; something that works.
+;;
+;; Explicitly check that the dbi has a key, as opposed to getting a nil val which could be a
+;; miss or could be an actual nil value for that key.
+(defn dbi-has-key? [^Dbi dbi ^Txn txn key]
+  (let [kcode (key-encode key)
+        ^CursorIterator iter (.iterate dbi txn kcode CursorIterator$IteratorType/FORWARD)]
+    (when (.hasNext iter)
+      (let [^CursorIterator$KeyVal kv (.next iter)]
+        (= kcode ^bytes (.key kv))))))
+
+(defn dbi-count [^Dbi dbi ^Txn txn]
+  (.entries ^Stat (.stat dbi txn)))
+    
+  
 ;; return true if newly stored, false if key was already there and flags indicated not to
 ;; overwrite
 
@@ -175,18 +193,24 @@
 (defmacro -Database-with-txn [txn & body]
   `(if-let [~txn (-txn ~'storage)]
      (do ~@body)
-     (let [~txn ^Txn (-rotxn ~'storage)
-           result# (do (.renew ~txn) ~@body)]
-       (.reset ~txn)
-       result#)))
+     (let [~txn ^Txn (-rotxn ~'storage)]
+       (try (.renew ~txn)
+            ~@body
+            (finally (.reset ~txn))))))
+
 
 
 
 (deftype Database [storage ^Dbi dbi]
-  PDatabase
-  (-fetch [this key]
-    (-Database-with-txn txn (dbi-fetch dbi txn key)))
+  clojure.lang.ILookup
+  (valAt [this key] (-Database-with-txn txn (dbi-fetch dbi txn key)))
+  (valAt [this key not-found]
+    (-Database-with-txn txn
+                        (if (dbi-has-key? dbi txn key)
+                          (dbi-fetch dbi txn key)
+                          not-found)))      
 
+  PDatabase
   (-store! [this key val]
     (io!)
     (if-let [tx (-txn storage)]

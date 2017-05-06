@@ -63,13 +63,13 @@
       (store! test1 :bar 'bar/bar)
       (store! test1 :baz {:a 1 :b 2 :c 3})
       (commit! storage)
-      (let [foo (fetch test1 :foob)
-            bar (fetch test1 :bar)
-            baz (fetch test1 :baz)]
+      (let [foo (get test1 :foob)
+            bar (get test1 :bar)
+            baz (get test1 :baz)]
         (begin! storage)
-        (let [foo2 (fetch test1 :foob)
-              bar2 (fetch test1 :bar)
-              baz2 (fetch test1 :baz)]
+        (let [foo2 (:foob test1)
+              bar2 (:bar test1)
+              baz2 (:baz test1)]
           (commit! storage)
           (begin! storage)
           (store! test1 :foob "BOOM")
@@ -77,8 +77,8 @@
           (begin! storage)
           (store! test1 :bar 'BOOM)
           (commit! storage)
-          (let [foo3 (fetch test1 :foob)
-                bar3 (fetch test1 :bar)
+          (let [foo3 (get test1 :foob)
+                bar3 (get test1 :bar)
                 t1-str-vals (transduce-db (comp (map val) (filter string?)) conj [] test1)
                 t1-trans-keys (transduce-db (map key) conj [] test1)
                 t1-trans-rev-keys (transduce-db (map key) conj () test1)
