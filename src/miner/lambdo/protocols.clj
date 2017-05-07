@@ -2,7 +2,6 @@
 
 
 (defprotocol PDatabase
-  (-store! [this key val])
   (-db-reduce-keys [this f init start rev?])
   (-db-reduce-kv [this f3 init start rev?])
   (-db-transduce [this xform f init start rev?]))

@@ -5,9 +5,9 @@
             [taoensso.nippy :as nip])
   (:import (java.nio.charset StandardCharsets)
            (clojure.lang MapEntry)
-           (org.lmdbjava Env EnvFlags Dbi DbiFlags Txn TxnFlags PutFlags Stat
+           (org.lmdbjava Env EnvFlags Dbi DbiFlags Txn TxnFlags PutFlags Stat GetOp
                          ByteArrayProxy Env$Builder
-                         CursorIterator CursorIterator$KeyVal CursorIterator$IteratorType) ))
+                         Cursor CursorIterator CursorIterator$KeyVal CursorIterator$IteratorType) ))
 
 
 
@@ -114,12 +114,10 @@
 ;;
 ;; Explicitly check that the dbi has a key, as opposed to getting a nil val which could be a
 ;; miss or could be an actual nil value for that key.
-(defn dbi-has-key? [^Dbi dbi ^Txn txn key]
-  (let [kcode (key-encode key)
-        ^CursorIterator iter (.iterate dbi txn kcode CursorIterator$IteratorType/FORWARD)]
-    (when (.hasNext iter)
-      (let [^CursorIterator$KeyVal kv (.next iter)]
-        (= kcode ^bytes (.key kv))))))
+(defn cursor-has-key? [^Cursor cursor key]
+  (let [kcode (key-encode key)]
+    (.get cursor kcode GetOp/MDB_SET)))
+
 
 (defn dbi-count [^Dbi dbi ^Txn txn]
   (.entries ^Stat (.stat dbi txn)))
@@ -133,6 +131,11 @@
   ([^Dbi dbi ^Txn txn key val] (dbi-store dbi txn key val nil))
   ([^Dbi dbi ^Txn txn key val flags]
    (.put dbi txn (key-encode key) (val-encode val) (into-array PutFlags flags))))
+
+
+(defn dbi-delete
+  ([^Dbi dbi key val] (.delete dbi (key-encode key)))
+  ([^Dbi dbi ^Txn txn key val] (.delete dbi txn (key-encode key))))
 
 
 (defn dbi-reduce-kv [^Dbi dbi ^Txn txn f3 init start-key rev?]
@@ -199,25 +202,76 @@
             (finally (.reset ~txn))))))
 
 
+(defmacro -Database-with-txn-cursor [txn cursor & body]
+  `(if-let [~txn (-txn ~'storage)]
+     (let [~cursor (.openCursor ~'dbi ~txn)]
+       (try ~@body
+            (finally (.close ~cursor))))
+     (let [~txn ^Txn (-rotxn ~'storage)]
+       (try (.renew ~txn)
+            (if ~'ro-cursor
+              (.renew ~'ro-cursor ~txn)
+              (set! ~'ro-cursor (.openCursor ~'dbi ~txn)))
+            (let [~cursor ~'ro-cursor]
+              ~@body)
+            (finally (.reset ~txn))))))
+
+;; identity xform
+(defn xpass [rf]
+  ;; identity/unit transducer, passes everything along without change
+  (fn
+    ([] (rf))
+    ([result] (rf result))
+    ([result input] (rf result input))))
 
 
-(deftype Database [storage ^Dbi dbi]
+(deftype Database [storage ^Dbi dbi ^:volatile-mutable ^Cursor ro-cursor]
   clojure.lang.ILookup
   (valAt [this key] (-Database-with-txn txn (dbi-fetch dbi txn key)))
   (valAt [this key not-found]
-    (-Database-with-txn txn
-                        (if (dbi-has-key? dbi txn key)
-                          (dbi-fetch dbi txn key)
-                          not-found)))      
+    (-Database-with-txn-cursor txn cursor
+                        (if (cursor-has-key? cursor key)
+                          (val-decode ^bytes (.val ^Cursor cursor))
+                          not-found)))
 
-  PDatabase
-  (-store! [this key val]
+  clojure.lang.ITransientMap
+  (assoc [this key val]
     (io!)
     (if-let [tx (-txn storage)]
       (dbi-store dbi tx key val)
       (dbi-store dbi key val))
     this)
 
+  (conj [this map-entry]
+    (.assoc this (key map-entry) (val map-entry)))
+
+  ;; SEM FIXME: should this be a storage commit! ???, probably not
+  ;; no-op
+  (persistent [this] this)
+
+  (without [this key]
+    (io!)
+    (if-let [tx (-txn storage)]
+      (dbi-delete dbi tx key val)
+      (dbi-delete dbi key val))
+    this)
+
+  (count [this]
+    (-Database-with-txn txn (dbi-count dbi txn)))
+
+  clojure.lang.IReduce
+  (reduce [this f]
+    (-Database-with-txn txn (dbi-transduce dbi txn xpass f (f) nil false)))
+
+  clojure.lang.IReduceInit
+  (reduce [this f init]
+    (-Database-with-txn txn (dbi-transduce dbi txn xpass f init nil false)))
+
+  clojure.lang.IKVReduce
+  (kvreduce [this f3 init]
+    (-Database-with-txn txn (dbi-reduce-kv dbi txn f3 init nil false)))
+  
+  PDatabase
   (-db-reduce-keys [this f init start rev?]
     (-Database-with-txn txn (dbi-reduce-keys dbi txn f init start rev?)))
 
@@ -243,7 +297,7 @@
   (-open-database! [this dbkey flags]
     (io!)
     (let [dbi (.openDbi env (key-encode dbkey) (dbiflags flags))]
-      (->Database this dbi)))
+      (->Database this dbi nil)))
 
   (-begin! [this flags]
     (io!)

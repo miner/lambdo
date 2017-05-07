@@ -29,7 +29,8 @@
   storage)
 
 
-(defn store! [db key val] (-store! db key val))
+;; fetch is now get
+;; store! is now assoc!
 
 (defn open-database [storage dbkey]
   (-open-database! storage dbkey nil))
@@ -42,6 +43,21 @@
 (defn commit! [storage] (-commit! storage))
 
 (defn rollback! [storage] (-rollback! storage))
+
+
+#_ (defn reducible-kvs
+  ([db] (reducible-kvs db nil))
+  ([db start-key] (reducible-kvs db start-key false))
+  ([db start-key rev?]
+   (-reducible-kvs db start-key rev?)))
+
+#_ (defn reducible-keys
+  ([db] (reducible-keys db nil))
+  ([db start-key] (reducible-keys db start-key false))
+  ([db start-key rev?]
+   (-reducible-keys db start-key rev?)))
+
+
 
 (defn reduce-db
   ([f3 init db] (reduce-db f3 init db nil))
