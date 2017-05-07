@@ -271,6 +271,11 @@
   (kvreduce [this f3 init]
     (-Database-with-txn txn (dbi-reduce-kv dbi txn f3 init nil false)))
   
+  PKeyed
+  (-has-key? [this key]
+    (-Database-with-txn-cursor txn cursor
+                               (cursor-has-key? cursor key)))
+  
   PDatabase
   (-db-reduce-keys [this f init start rev?]
     (-Database-with-txn txn (dbi-reduce-keys dbi txn f init start rev?)))

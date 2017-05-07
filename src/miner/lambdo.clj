@@ -84,6 +84,9 @@
   ([db start-key reverse?]
    (-db-reduce-keys db conj [] start-key reverse?)))
 
+;; same idea as contains? but implemented with a PKeyed protocol, and a less controversial name
+(defn has-key? [db key]
+  (-has-key? db key))
 
 (defn next-key [db key]
   (reduce-keys (fn [_ k] (when (not= key k) (reduced k)))
