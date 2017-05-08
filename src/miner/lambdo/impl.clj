@@ -119,6 +119,32 @@
     (.get cursor kcode GetOp/MDB_SET)))
 
 
+;; Maybe improvements? Untested
+(defn cursor-first-key [^Cursor cursor]
+  (and (.first cursor) (key-decode (.key cursor))))
+
+(defn cursor-last-key [^Cursor cursor]
+  (and (.last cursor) (key-decode (.key cursor))))
+
+(defn cursor-next-key [^Cursor cursor key]
+  (if key
+    (let [kcode (key-encode key)]
+      (when (if (.get cursor kcode GetOp/MDB_SET)
+              (.next cursor)
+              (.get cursor kcode GetOp/MDB_SET_RANGE))
+        (key-decode (.key cursor))))
+    (cursor-first-key cursor)))
+    
+(defn cursor-previous-key [^Cursor cursor key]
+  (if key
+    (let [kcode (key-encode key)]
+      (when-not (.get cursor kcode GetOp/MDB_SET)
+        (.get cursor kcode GetOp/MDB_SET_RANGE))
+      (when (.prev cursor)
+        (key-decode (.key cursor))))
+    (cursor-last-key cursor)))
+
+
 (defn dbi-count [^Dbi dbi ^Txn txn]
   (.entries ^Stat (.stat dbi txn)))
     
@@ -275,6 +301,19 @@
   (-has-key? [this key]
     (-Database-with-txn-cursor txn cursor
                                (cursor-has-key? cursor key)))
+  PKeyNavigation
+  (-first-key [this]
+    (-Database-with-txn-cursor txn cursor
+                               (cursor-first-key cursor)))
+  (-last-key [this]
+    (-Database-with-txn-cursor txn cursor
+                               (cursor-last-key cursor)))
+  (-next-key [this key]
+    (-Database-with-txn-cursor txn cursor
+                               (cursor-next-key cursor key)))
+  (-previous-key [this key]
+    (-Database-with-txn-cursor txn cursor
+                               (cursor-previous-key cursor key)))
   
   PDatabase
   (-db-reduce-keys [this f init start rev?]

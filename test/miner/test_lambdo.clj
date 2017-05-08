@@ -107,4 +107,35 @@
             (is (= foo3 foo))
             (is (= bar3 'BOOM))))))))
 
+(deftest key-nav-test
+  (testing "Key Nav API"
+    (let [pathname (make-tmpdir (str "LAMBDO_KTEST_" (System/currentTimeMillis)))
+          storage (create-storage! pathname)
+          test2 (create-database! storage :test2)]
+      (begin! storage)
+      (assoc! test2 :a 11)
+      (assoc! test2 :b 22)
+      (assoc! test2 :c 33)
+      (assoc! test2 :d 44)
+      (commit! storage)
+      (let [ap (previous-key test2 :a)
+            an (next-key test2 :a)
+            dp (previous-key test2 :d)
+            dn (next-key test2 :d)
+            fk (first-key test2)
+            lk (last-key test2)
+            pnil (previous-key test2 nil)
+            nnil (next-key test2 nil)]
+        (close-storage! storage)
+        (is (= pnil lk))
+        (is (= nnil fk))
+        (is (= ap nil))
+        (is (= an :b))
+        (is (= dp :c))
+        (is (= dn nil))
+        (is (= fk :a))
+        (is (= lk :d))))))
+
+        
+
 

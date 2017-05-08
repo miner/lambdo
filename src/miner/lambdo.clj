@@ -77,7 +77,7 @@
   ([xform f init db start-key reverse?]
      (-db-transduce db xform f init start-key reverse?)))
 
-
+;; SEM FIXME: probably shouldn't be API
 (defn keys-db
   ([db] (keys-db db nil))
   ([db start-key] (keys-db db start-key false))
@@ -88,25 +88,10 @@
 (defn has-key? [db key]
   (-has-key? db key))
 
-(defn next-key [db key]
-  (reduce-keys (fn [_ k] (when (not= key k) (reduced k)))
-             nil
-             db
-             key))
+(defn next-key [db key] (-next-key db key))
 
-;; tricky way to get second, or first when key is nil
-;; be careful about an empty database (that's what init is () and we take `first` on result)
-(defn prev-key [db key]
-  (first (reduce-keys (fn [res k]
-                        (when (or (not key) (and (not res) (not= key k)))
-                          (reduced (list k))))
-                      ()
-                      db
-                      key
-                      true)))
+(defn previous-key [db key] (-previous-key db key))
 
-(defn first-key [db]
-  (next-key db nil))
+(defn first-key [db] (-first-key db))
 
-(defn last-key [db]
-  (prev-key db nil))
+(defn last-key [db] (-last-key db))
