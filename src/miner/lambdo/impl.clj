@@ -260,6 +260,9 @@
                           (val-decode ^bytes (.val ^Cursor cursor))
                           not-found)))
 
+  ;; No, it should not be Associative -- that implies IPersistentCollection and we are not
+  ;; Persistent.  We would have to use separate transactions to allow the old to persist
+
   clojure.lang.ITransientMap
   (assoc [this key val]
     (io!)
