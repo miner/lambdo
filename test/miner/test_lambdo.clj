@@ -82,12 +82,12 @@
                 t1-str-vals (transduce (comp (map val) (filter string?)) conj [] test1)
                 t1-trans-keys (transduce (map key) conj [] test1)
                 t1-trans-rev-keys (transduce (map key) conj () test1)
-                t1-keys (into [] (reducible-keys test1))
-                t1-rev-keys (transduce (map key) conj [] (reducible-kvs test1 nil true))
-                t1-pre-bazz (into [] (reducible-keys test1 :bazz true))
+                t1-keys (into [] (reducible test1 :keys-only? true))
+                t1-rev-keys (transduce (map key) conj [] (reducible test1 :reverse? true))
+                t1-pre-bazz (into [] (reducible test1 :start :bazz :reverse? true))
                 all-test1 (reduce conj {} test1)
-                rev-test1 (reduce-kv conj [] (reducible-kvs test1 nil true))
-                fob-test1 (reduce-kv conj [] (reducible-kvs test1 :dobzy))]
+                rev-test1 (reduce-kv conj [] (reducible test1 :reverse? true))
+                fob-test1 (reduce-kv conj [] (reducible test1 :start :dobzy))]
             (close-storage! storage)
             (is (= t1-str-vals ["five" "foo"]))
             (is (= t1-keys) [:aaaaa :bar :baz :foob])

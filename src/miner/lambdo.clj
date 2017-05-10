@@ -61,20 +61,8 @@
 
 (defn rollback! [storage] (-rollback! storage))
 
-;; db-slice db-subseq select
-(defn reducible-kvs
-  ([db] (reducible-kvs db nil))
-  ([db start-key] (reducible-kvs db start-key false))
-  ([db start-key rev?]
-   (-reducible-kvs db start-key rev?)))
-
-;; naming key-range, db-keys
-(defn reducible-keys
-  ([db] (reducible-keys db nil))
-  ([db start-key] (reducible-keys db start-key false))
-  ([db start-key rev?]
-   (-reducible-keys db start-key rev?)))
-
+(defn reducible [db & {:keys [keys-only? start reverse?]}]
+  (-reducible db keys-only? start reverse?))
 
 ;; same idea as contains? but implemented with a PKeyed protocol, and a less controversial name
 (defn has-key? [db key]

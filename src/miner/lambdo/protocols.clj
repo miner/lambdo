@@ -11,8 +11,7 @@
   (-previous-key [this key]))
 
 (defprotocol PReducibleDatabase
-  (-reducible-keys [this start rev?])
-  (-reducible-kvs [this start rev?]))
+  (-reducible [this keys-only? start-key reverse?]))
 
 (defprotocol PStorage
   (-open-database! [this dbkey flags])

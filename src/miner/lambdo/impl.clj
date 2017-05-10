@@ -242,7 +242,6 @@
               ~@body)
             (finally (.reset ~txn))))))
 
-
 ;; SEM FIXME: might be leaking a ro-cursor
 ;; never close the db, because LMDB does it that way
 
@@ -314,32 +313,20 @@
                                (cursor-previous-key cursor key)))
   
   PReducibleDatabase
-  (-reducible-keys [this start rev?]
-    (reify
-      ;; clojure.lang.IReduce
-      #_ (reduce [this f]
-        (with-txn txn (dbi-reduce-keys dbi txn f (f) start rev?)))
+  (-reducible [this keys-only? start-key reverse?]
+    (if keys-only?
+      (reify
+        clojure.lang.IReduceInit
+        (reduce [this f init]
+          (with-txn txn (dbi-reduce-keys dbi txn f init start-key reverse?))))
+      (reify
+        clojure.lang.IReduceInit
+        (reduce [this f init]
+          (with-txn txn (dbi-reduce dbi txn f init start-key reverse?)))
 
-      clojure.lang.IReduceInit
-      (reduce [this f init]
-        (with-txn txn (dbi-reduce-keys dbi txn f init start rev?)))
-      ))
-  
-
-  (-reducible-kvs [this start rev?]
-    (reify
-     ;; clojure.lang.IReduce
-      #_ (reduce [this f]
-        (with-txn txn (dbi-reduce dbi txn f (f) start rev?)))
-
-      clojure.lang.IReduceInit
-      (reduce [this f init]
-        (with-txn txn (dbi-reduce dbi txn f init start rev?)))
-
-      clojure.lang.IKVReduce
-      (kvreduce [this f3 init]
-        (with-txn txn (dbi-reduce-kv dbi txn f3 init start rev?)))
-      ))
+        clojure.lang.IKVReduce
+        (kvreduce [this f3 init]
+          (with-txn txn (dbi-reduce-kv dbi txn f3 init start-key reverse?))))))
   
   )
 
