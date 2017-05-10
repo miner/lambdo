@@ -218,6 +218,7 @@
                 (recur res nil)))))
         res))))
 
+
 ;; may only be used within Database functions, assumes access to Database fields
 (defmacro -Database-with-txn [txn & body]
   `(if-let [~txn (-txn ~'storage)]
@@ -318,15 +319,33 @@
     (-Database-with-txn-cursor txn cursor
                                (cursor-previous-key cursor key)))
   
-  PDatabase
-  (-db-reduce-keys [this f init start rev?]
-    (-Database-with-txn txn (dbi-reduce-keys dbi txn f init start rev?)))
+  PReducibleDatabase
+  (-reducible-keys [this start rev?]
+    (reify
+      ;; clojure.lang.IReduce
+      #_ (reduce [this f]
+        (-Database-with-txn txn (dbi-reduce-keys dbi txn f (f) start rev?)))
 
-  (-db-reduce-kv [this f3 init start rev?]
-    (-Database-with-txn txn (dbi-reduce-kv dbi txn f3 init start rev?)))
+      clojure.lang.IReduceInit
+      (reduce [this f init]
+        (-Database-with-txn txn (dbi-reduce-keys dbi txn f init start rev?)))
+      ))
+  
 
-  (-db-transduce [this xform f init start rev?]
-    (-Database-with-txn txn (dbi-transduce dbi txn xform f init start rev?)))
+  (-reducible-kvs [this start rev?]
+    (reify
+     ;; clojure.lang.IReduce
+      #_ (reduce [this f]
+        (-Database-with-txn txn (dbi-transduce dbi txn xpass f (f) start rev?)))
+
+      clojure.lang.IReduceInit
+      (reduce [this f init]
+        (-Database-with-txn txn (dbi-transduce dbi txn xpass f init start rev?)))
+
+      clojure.lang.IKVReduce
+      (kvreduce [this f3 init]
+        (-Database-with-txn txn (dbi-reduce-kv dbi txn f3 init start rev?)))
+      ))
   
   )
 

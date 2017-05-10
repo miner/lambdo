@@ -44,45 +44,20 @@
 
 (defn rollback! [storage] (-rollback! storage))
 
-
-#_ (defn reducible-kvs
+;; db-slice db-subseq select
+(defn reducible-kvs
   ([db] (reducible-kvs db nil))
   ([db start-key] (reducible-kvs db start-key false))
   ([db start-key rev?]
    (-reducible-kvs db start-key rev?)))
 
-#_ (defn reducible-keys
+;; naming key-range, db-keys
+(defn reducible-keys
   ([db] (reducible-keys db nil))
   ([db start-key] (reducible-keys db start-key false))
   ([db start-key rev?]
    (-reducible-keys db start-key rev?)))
 
-
-
-(defn reduce-db
-  ([f3 init db] (reduce-db f3 init db nil))
-  ([f3 init db start-key] (reduce-db f3 init db start-key false))
-  ([f3 init db start-key reverse?]
-     (-db-reduce-kv db f3 init start-key reverse?)))
-
-(defn reduce-keys
-  ([f init db] (reduce-keys f init db nil))
-  ([f init db start-key] (reduce-keys f init db start-key false))
-  ([f init db start-key reverse?]
-     (-db-reduce-keys db f init start-key reverse?)))
-
-(defn transduce-db
-  ([xform f init db] (transduce-db xform f init db nil))
-  ([xform f init db start-key] (transduce-db xform f init db start-key false))
-  ([xform f init db start-key reverse?]
-     (-db-transduce db xform f init start-key reverse?)))
-
-;; SEM FIXME: probably shouldn't be API
-(defn keys-db
-  ([db] (keys-db db nil))
-  ([db start-key] (keys-db db start-key false))
-  ([db start-key reverse?]
-   (-db-reduce-keys db conj [] start-key reverse?)))
 
 ;; same idea as contains? but implemented with a PKeyed protocol, and a less controversial name
 (defn has-key? [db key]

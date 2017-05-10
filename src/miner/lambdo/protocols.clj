@@ -10,10 +10,9 @@
   (-next-key [this key])
   (-previous-key [this key]))
 
-(defprotocol PDatabase
-  (-db-reduce-keys [this f init start rev?])
-  (-db-reduce-kv [this f3 init start rev?])
-  (-db-transduce [this xform f init start rev?]))
+(defprotocol PReducibleDatabase
+  (-reducible-keys [this start rev?])
+  (-reducible-kvs [this start rev?]))
 
 (defprotocol PStorage
   (-open-database! [this dbkey flags])
