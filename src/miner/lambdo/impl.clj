@@ -219,7 +219,7 @@
 
 
 ;; may only be used within Database functions, assumes access to Database fields
-(defmacro -Database-with-txn [txn & body]
+(defmacro ^:private with-txn [txn & body]
   `(if-let [~txn (-txn ~'storage)]
      (do ~@body)
      (let [~txn ^Txn (-rotxn ~'storage)]
@@ -228,7 +228,7 @@
             (finally (.reset ~txn))))))
 
 
-(defmacro -Database-with-txn-cursor [txn cursor & body]
+(defmacro ^:private with-txn-cursor [txn cursor & body]
   `(if-let [~txn (-txn ~'storage)]
      (let [~cursor (.openCursor ~'dbi ~txn)]
        (try ~@body
@@ -243,11 +243,14 @@
             (finally (.reset ~txn))))))
 
 
+;; SEM FIXME: might be leaking a ro-cursor
+;; never close the db, because LMDB does it that way
+
 (deftype Database [storage ^Dbi dbi ^:volatile-mutable ^Cursor ro-cursor]
   clojure.lang.ILookup
-  (valAt [this key] (-Database-with-txn txn (dbi-fetch dbi txn key)))
+  (valAt [this key] (with-txn txn (dbi-fetch dbi txn key)))
   (valAt [this key not-found]
-    (-Database-with-txn-cursor txn cursor
+    (with-txn-cursor txn cursor
                         (if (cursor-has-key? cursor key)
                           (val-decode ^bytes (.val ^Cursor cursor))
                           not-found)))
@@ -278,36 +281,36 @@
     this)
 
   (count [this]
-    (-Database-with-txn txn (dbi-count dbi txn)))
+    (with-txn txn (dbi-count dbi txn)))
 
   clojure.lang.IReduce
   (reduce [this f]
-    (-Database-with-txn txn (dbi-reduce dbi txn f (f) nil false)))
+    (with-txn txn (dbi-reduce dbi txn f (f) nil false)))
 
   clojure.lang.IReduceInit
   (reduce [this f init]
-    (-Database-with-txn txn (dbi-reduce dbi txn f init nil false)))
+    (with-txn txn (dbi-reduce dbi txn f init nil false)))
 
   clojure.lang.IKVReduce
   (kvreduce [this f3 init]
-    (-Database-with-txn txn (dbi-reduce-kv dbi txn f3 init nil false)))
+    (with-txn txn (dbi-reduce-kv dbi txn f3 init nil false)))
   
   PKeyed
   (-has-key? [this key]
-    (-Database-with-txn-cursor txn cursor
+    (with-txn-cursor txn cursor
                                (cursor-has-key? cursor key)))
   PKeyNavigation
   (-first-key [this]
-    (-Database-with-txn-cursor txn cursor
+    (with-txn-cursor txn cursor
                                (cursor-first-key cursor)))
   (-last-key [this]
-    (-Database-with-txn-cursor txn cursor
+    (with-txn-cursor txn cursor
                                (cursor-last-key cursor)))
   (-next-key [this key]
-    (-Database-with-txn-cursor txn cursor
+    (with-txn-cursor txn cursor
                                (cursor-next-key cursor key)))
   (-previous-key [this key]
-    (-Database-with-txn-cursor txn cursor
+    (with-txn-cursor txn cursor
                                (cursor-previous-key cursor key)))
   
   PReducibleDatabase
@@ -315,11 +318,11 @@
     (reify
       ;; clojure.lang.IReduce
       #_ (reduce [this f]
-        (-Database-with-txn txn (dbi-reduce-keys dbi txn f (f) start rev?)))
+        (with-txn txn (dbi-reduce-keys dbi txn f (f) start rev?)))
 
       clojure.lang.IReduceInit
       (reduce [this f init]
-        (-Database-with-txn txn (dbi-reduce-keys dbi txn f init start rev?)))
+        (with-txn txn (dbi-reduce-keys dbi txn f init start rev?)))
       ))
   
 
@@ -327,15 +330,15 @@
     (reify
      ;; clojure.lang.IReduce
       #_ (reduce [this f]
-        (-Database-with-txn txn (dbi-reduce dbi txn f (f) start rev?)))
+        (with-txn txn (dbi-reduce dbi txn f (f) start rev?)))
 
       clojure.lang.IReduceInit
       (reduce [this f init]
-        (-Database-with-txn txn (dbi-reduce dbi txn f init start rev?)))
+        (with-txn txn (dbi-reduce dbi txn f init start rev?)))
 
       clojure.lang.IKVReduce
       (kvreduce [this f3 init]
-        (-Database-with-txn txn (dbi-reduce-kv dbi txn f3 init start rev?)))
+        (with-txn txn (dbi-reduce-kv dbi txn f3 init start rev?)))
       ))
   
   )
