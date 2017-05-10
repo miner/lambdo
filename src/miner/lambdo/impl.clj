@@ -182,12 +182,11 @@
                 (recur res nil)))))
         res))))
 
-(defn dbi-transduce [^Dbi dbi ^Txn txn xform f init start-key rev?]
+(defn dbi-reduce [^Dbi dbi ^Txn txn f init start-key rev?]
   (let [^CursorIterator iter (.iterate dbi txn (when start-key (key-encode start-key))
                                        (if rev?
                                          CursorIterator$IteratorType/BACKWARD
-                                         CursorIterator$IteratorType/FORWARD))
-        xf (xform f)]
+                                         CursorIterator$IteratorType/FORWARD))]
     (loop [res init check-first (and rev? start-key)]
       (if (.hasNext iter)
         (let [^CursorIterator$KeyVal kv (.next iter)
@@ -195,7 +194,7 @@
           (if (and check-first (not= k start-key))
             (recur res nil)
             (let [v (val-decode ^bytes (.val kv))
-                  res (xf res (MapEntry/create k v))]
+                  res (f res (MapEntry/create k v))]
               (if (reduced? res)
                 @res
                 (recur res nil)))))
@@ -243,14 +242,6 @@
               ~@body)
             (finally (.reset ~txn))))))
 
-;; identity xform
-(defn xpass [rf]
-  ;; identity/unit transducer, passes everything along without change
-  (fn
-    ([] (rf))
-    ([result] (rf result))
-    ([result input] (rf result input))))
-
 
 (deftype Database [storage ^Dbi dbi ^:volatile-mutable ^Cursor ro-cursor]
   clojure.lang.ILookup
@@ -291,11 +282,11 @@
 
   clojure.lang.IReduce
   (reduce [this f]
-    (-Database-with-txn txn (dbi-transduce dbi txn xpass f (f) nil false)))
+    (-Database-with-txn txn (dbi-reduce dbi txn f (f) nil false)))
 
   clojure.lang.IReduceInit
   (reduce [this f init]
-    (-Database-with-txn txn (dbi-transduce dbi txn xpass f init nil false)))
+    (-Database-with-txn txn (dbi-reduce dbi txn f init nil false)))
 
   clojure.lang.IKVReduce
   (kvreduce [this f3 init]
@@ -336,11 +327,11 @@
     (reify
      ;; clojure.lang.IReduce
       #_ (reduce [this f]
-        (-Database-with-txn txn (dbi-transduce dbi txn xpass f (f) start rev?)))
+        (-Database-with-txn txn (dbi-reduce dbi txn f (f) start rev?)))
 
       clojure.lang.IReduceInit
       (reduce [this f init]
-        (-Database-with-txn txn (dbi-transduce dbi txn xpass f init start rev?)))
+        (-Database-with-txn txn (dbi-reduce dbi txn f init start rev?)))
 
       clojure.lang.IKVReduce
       (kvreduce [this f3 init]

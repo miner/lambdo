@@ -29,8 +29,25 @@
   storage)
 
 
-;; fetch is now get
-;; store! is now assoc!
+;; a Database is accessed like an ITransientMap.
+;; Important note: all LMDB requires user to guarantee thread isolation.  Clojure transients
+;; are like that, too.
+;;
+;; Bash-in-place actually works, but I'm not sure I should encourage it.
+;; Not good Clojure style, but simpler to read -- still considering.  Of course, Clojure
+;; style will work.
+;;
+;; get  -- also keyword access works (:x db)
+;; assoc!
+;; dissoc!
+;;
+;; a database is a reducible -- in that it works as the "collection" final arg for a
+;; 'reduce', 'reduce-kv' or 'transduce' call.  Slices can be used similarly with
+;; reducible-keys and reducible-kvs.  Both take a db, then optional 'start-key' and optional
+;; 'rev?' boolean.  Optional 'rev?' (boolean) determines if results are normal lexigraphical
+;; by key (rev? = false, the default), or reverse lexigraphical (rev? = true).  If start-key
+;; is given, results start at that key and end at the last or first key (as appropriate for
+;; rev?).  A start-key of nil (the default) indicates first or last as appropriate for rev?.
 
 (defn open-database [storage dbkey]
   (-open-database! storage dbkey nil))
