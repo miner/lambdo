@@ -118,6 +118,16 @@
       (assoc! test2 :c 33)
       (assoc! test2 :d 44)
       (commit! storage)
+      ;; transaction detour
+      (begin! storage)
+      (assoc! test2 :a 101)
+      (dissoc! test2 :b)
+      (is (nil? (:b test2)))
+      (is (= 101 (:a test2)))
+      (rollback! storage)
+      ;; confirm rollback
+      (is (= (:b test2) 22))
+      ;; back to key nav
       (let [ap (previous-key test2 :a)
             an (next-key test2 :a)
             dp (previous-key test2 :d)
