@@ -282,6 +282,10 @@
   (count [this]
     (with-txn txn (dbi-count dbi txn)))
 
+  clojure.lang.Seqable
+  (seq [this]
+    (with-txn txn (dbi-reduce dbi txn conj () nil true)))
+
   clojure.lang.IReduce
   (reduce [this f]
     (with-txn txn (dbi-reduce dbi txn f (f) nil false)))
@@ -316,10 +320,19 @@
   (-reducible [this keys-only? start-key reverse?]
     (if keys-only?
       (reify
+        clojure.lang.Seqable
+        (seq [this]
+          (with-txn txn (dbi-reduce-keys dbi txn conj () start-key (not reverse?))))
+
         clojure.lang.IReduceInit
         (reduce [this f init]
           (with-txn txn (dbi-reduce-keys dbi txn f init start-key reverse?))))
+
       (reify
+        clojure.lang.Seqable
+        (seq [this]
+          (with-txn txn (dbi-reduce dbi txn conj () start-key (not reverse?))))
+
         clojure.lang.IReduceInit
         (reduce [this f init]
           (with-txn txn (dbi-reduce dbi txn f init start-key reverse?)))

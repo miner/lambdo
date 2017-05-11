@@ -61,6 +61,8 @@
 
 (defn rollback! [storage] (-rollback! storage))
 
+;; maybe call it db-slice, db-view
+;; important: not a seq, just a reducible
 (defn reducible [db & {:keys [keys-only? start reverse?]}]
   (-reducible db keys-only? start reverse?))
 
