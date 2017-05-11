@@ -242,6 +242,11 @@
               ~@body)
             (finally (.reset ~txn))))))
 
+;; pr-compare needs to agree with order implied by LMDB lexigraphical order of results of
+;; key-encode, which uses pr-str
+(defn pr-compare [a b]
+  (compare (pr-str a) (pr-str b)))
+
 ;; SEM FIXME: might be leaking a ro-cursor
 ;; never close the db, because LMDB does it that way
 
@@ -297,7 +302,14 @@
   clojure.lang.IKVReduce
   (kvreduce [this f3 init]
     (with-txn txn (dbi-reduce-kv dbi txn f3 init nil false)))
-  
+
+  ;; SEM -- note Clojure ascending is opposite sense of lambdo reverse?
+  clojure.lang.Sorted
+  (comparator [this] pr-compare)
+  (entryKey [this entry] (key entry))
+  (seq [this ascending] (with-txn txn (dbi-reduce dbi txn conj () nil ascending)))
+  (seqFrom [this key ascending] (seq (with-txn txn (dbi-reduce dbi txn conj [] key (not ascending)))))
+
   PKeyed
   (-has-key? [this key]
     (with-txn-cursor txn cursor

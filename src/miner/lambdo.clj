@@ -41,6 +41,12 @@
 ;; assoc!
 ;; dissoc!
 ;;
+;; Also implements clojure.lang.Sorted
+;; seq
+;; subseq
+;; rsubseq
+;; 
+;;
 ;; a database is a reducible -- in that it works as the "collection" final arg for a
 ;; 'reduce', 'reduce-kv' or 'transduce' call.  Slices can be used similarly with
 ;; reducible-keys and reducible-kvs.  Both take a db, then optional 'start-key' and optional
