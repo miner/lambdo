@@ -273,9 +273,17 @@
   (conj [this map-entry]
     (.assoc this (key map-entry) (val map-entry)))
 
-  ;; SEM FIXME: should this be a storage commit! ???, probably not
-  ;; no-op
-  (persistent [this] this)
+  ;; SEM: Issue -- this is expensive O(n), which is not the contract of persistent!
+  ;; Also, the db is still usable after this call to persistent! since it makes a new
+  ;; sorted-map.
+  ;; SEM: maybe we should cache the persistent sorted-map.  Clear cache on any assoc!
+  (persistent [this]
+    (when-let [tx (-txn storage)]
+      (throw (ex-info "An open write transaction prevents persistent!.  The storage must commit! or rollback! first."
+                      {:txn tx
+                       :storage storage
+                       :database this}))) 
+    (reduce-kv assoc (sorted-map-by pr-compare) this))
 
   (without [this key]
     (io!)

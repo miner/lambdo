@@ -69,6 +69,11 @@
 
 ;; maybe call it db-slice, db-view
 ;; important: not a seq, just a reducible
+;; although it is seqable so you can get the seq (paying for scanning)
+;;
+;; SEM: consider how this relates to a Clojure eduction.  Do you want to add an xform?  Not
+;; really.
+
 (defn reducible [db & {:keys [keys-only? start reverse?]}]
   (-reducible db keys-only? start reverse?))
 
@@ -83,3 +88,8 @@
 (defn first-key [db] (-first-key db))
 
 (defn last-key [db] (-last-key db))
+
+;; returns plain hash-map (not sorted)
+;; see also persistent! which returns sorted-map for better consistency with db
+(defn snapshot [db] (persistent! (reduce-kv assoc! (transient {}) db)))
+
