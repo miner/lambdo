@@ -2,7 +2,7 @@
 
 
 (defprotocol PKeyed
-  (-has-key? [this key]))
+  (-key? [this key]))
 
 (defprotocol PKeyNavigation
   (-first-key [this])
@@ -24,7 +24,7 @@
   
 (extend-protocol PKeyed
   clojure.lang.Associative
-  (-has-key? [this key] (.containsKey this key))
+  (-key? [this key] (.containsKey this key))
   clojure.lang.IPersistentSet
-  (-has-key? [this key] (.contains this key))
+  (-key? [this key] (.contains this key))
   )

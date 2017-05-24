@@ -282,7 +282,7 @@
       (throw (ex-info "An open write transaction prevents persistent!.  The storage must commit! or rollback! first."
                       {:txn tx
                        :storage storage
-                       :database this}))) 
+                       :database this})))
     (reduce-kv assoc (sorted-map-by pr-compare) this))
 
   (without [this key]
@@ -319,7 +319,7 @@
   (seqFrom [this key ascending] (seq (with-txn txn (dbi-reduce dbi txn conj [] key (not ascending)))))
 
   PKeyed
-  (-has-key? [this key]
+  (-key? [this key]
     (with-txn-cursor txn cursor
                                (cursor-has-key? cursor key)))
   PKeyNavigation

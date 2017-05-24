@@ -78,8 +78,8 @@
   (-reducible db keys-only? start reverse?))
 
 ;; same idea as contains? but implemented with a PKeyed protocol, and a less controversial name
-(defn has-key? [db key]
-  (-has-key? db key))
+(defn key? [db key]
+  (-key? db key))
 
 (defn next-key [db key] (-next-key db key))
 
@@ -93,3 +93,19 @@
 ;; see also persistent! which returns sorted-map for better consistency with db
 (defn snapshot [db] (persistent! (reduce-kv assoc! (transient {}) db)))
 
+;; need a create-database-from-snapshot
+;; order is important when loading a new database
+
+;; untested
+;; should only create new, not overwrite existing
+(defn create-database-from-snapshot [storage dbkey snapshot]
+  (let [db (create-database! storage dbkey)]
+    (if (sorted? snapshot)
+      (do  ;; not implemented -- need MDB_APPEND mode creation
+        nil)
+      (do
+        (begin! storage)
+        (reduce-kv (fn [res k v] (assoc! db k v) nil) nil snapshot)
+        (commit! storage)))
+    ;; return opened database
+    db))
