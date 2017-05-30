@@ -9,7 +9,7 @@
                          ByteArrayProxy Env$Builder
                          Cursor CursorIterator CursorIterator$KeyVal CursorIterator$IteratorType) ))
 
-
+;; All of impl is essentially private, not part of the public API
 
 ;; SEM: Nippy encoding/decoding byte arrays into for LMDBjava to use.
 ;; SEM: use Edn encoding for keys so that we maintain LMDB lexigraphical order
@@ -27,6 +27,11 @@
                              
 (defn txnflags ^"[Lorg.lmdbjava.TxnFlags;" [flags]
   (into-array TxnFlags flags))
+
+(defn putflags ^"[Lorg.lmdbjava.PutFlags;" [flags]
+  (into-array PutFlags flags))
+
+
 
 (defn create-env
   (^Env [path] (create-env path 10))
@@ -152,11 +157,12 @@
 ;; return true if newly stored, false if key was already there and flags indicated not to
 ;; overwrite
 
+;; SEM FIXME: do we really need multi-arity?  Probably not
 (defn dbi-store
   ([^Dbi dbi key val] (.put dbi (key-encode key) (val-encode val)))
   ([^Dbi dbi ^Txn txn key val] (dbi-store dbi txn key val nil))
   ([^Dbi dbi ^Txn txn key val flags]
-   (.put dbi txn (key-encode key) (val-encode val) (into-array PutFlags flags))))
+   (.put dbi txn (key-encode key) (val-encode val) (putflags flags))))
 
 
 (defn dbi-delete
@@ -246,6 +252,13 @@
 ;; key-encode, which uses pr-str
 (defn pr-compare [a b]
   (compare (pr-str a) (pr-str b)))
+
+
+;; default is false for everything else
+(extend-protocol PSortedSnapshot
+  clojure.lang.PersistentTreeMap
+  (sorted-snapshot? [this] (= (.comparator ^clojure.lang.PersistentTreeMap this) pr-compare)))
+
 
 ;; SEM FIXME: might be leaking a ro-cursor
 ;; never close the db, because LMDB does it that way
@@ -361,6 +374,18 @@
         (kvreduce [this f3 init]
           (with-txn txn (dbi-reduce-kv dbi txn f3 init start-key reverse?))))))
   
+  PAppendableDatabase
+  ;; database must fresh and sequential writes must be in key order
+  (-append! [this key val]
+    (io!)
+    (if-let [tx (-txn storage)]
+      (dbi-store dbi tx key val [PutFlags/MDB_APPEND])
+      (throw (ex-info "Must be in transaction to append!"
+                      {:db this
+                       :key key
+                       :val val})))
+    this)
+
   )
 
 

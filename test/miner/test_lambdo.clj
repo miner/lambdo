@@ -113,10 +113,7 @@
           storage (create-storage! pathname)
           test2 (create-database! storage :test2)]
       (begin! storage)
-      (assoc! test2 :a 11)
-      (assoc! test2 :b 22)
-      (assoc! test2 :c 33)
-      (assoc! test2 :d 44)
+      (assoc! test2 :a 11 :b 22 :c 33 :d 44)
       (commit! storage)
       ;; transaction detour
       (begin! storage)

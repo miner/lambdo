@@ -98,14 +98,14 @@
 
 ;; untested
 ;; should only create new, not overwrite existing
-(defn create-database-from-snapshot [storage dbkey snapshot]
+(defn create-database-from-snapshot! [storage dbkey snapshot]
   (let [db (create-database! storage dbkey)]
-    (if (sorted? snapshot)
-      (do  ;; not implemented -- need MDB_APPEND mode creation
-        nil)
-      (do
-        (begin! storage)
-        (reduce-kv (fn [res k v] (assoc! db k v) nil) nil snapshot)
-        (commit! storage)))
+    (begin! storage)
+    ;; faster if snapshot is sorted and database starts empty
+    ;; reduce-kv result is ignored, just for side-effect
+    (if (sorted-snapshot? snapshot)
+      (reduce-kv (fn [_ k v] (-append! db k v) nil) nil snapshot)
+      (reduce-kv (fn [_ k v] (assoc! db k v) nil) nil snapshot))
+    (commit! storage)
     ;; return opened database
     db))
