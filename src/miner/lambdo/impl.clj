@@ -224,7 +224,7 @@
         res))))
 
 
-;; may only be used within Database functions, assumes access to Database fields
+;; may only be used within Bucket functions, assumes access to Bucket fields
 (defmacro ^:private with-txn [txn & body]
   `(if-let [~txn (-txn ~'storage)]
      (do ~@body)
@@ -261,9 +261,9 @@
 
 
 ;; SEM FIXME: might be leaking a ro-cursor
-;; never close the db, because LMDB does it that way
+;; never close the dbi, because LMDB does it that way
 
-(deftype Database [storage ^Dbi dbi ^:volatile-mutable ^Cursor ro-cursor]
+(deftype Bucket [storage ^Dbi dbi ^:volatile-mutable ^Cursor ro-cursor]
   clojure.lang.ILookup
   (valAt [this key] (with-txn txn (dbi-fetch dbi txn key)))
   (valAt [this key not-found]
@@ -287,7 +287,7 @@
     (.assoc this (key map-entry) (val map-entry)))
 
   ;; SEM: Issue -- this is expensive O(n), which is not the contract of persistent!
-  ;; Also, the db is still usable after this call to persistent! since it makes a new
+  ;; Also, the bucket is still usable after this call to persistent! since it makes a new
   ;; sorted-map.
   ;; SEM: maybe we should cache the persistent sorted-map.  Clear cache on any assoc!
   (persistent [this]
@@ -295,7 +295,7 @@
       (throw (ex-info "An open write transaction prevents persistent!.  The storage must commit! or rollback! first."
                       {:txn tx
                        :storage storage
-                       :database this})))
+                       :bucket this})))
     (reduce-kv assoc (sorted-map-by pr-compare) this))
 
   (without [this key]
@@ -349,7 +349,7 @@
     (with-txn-cursor txn cursor
                                (cursor-previous-key cursor key)))
   
-  PReducibleDatabase
+  PReducibleBucket
   (-reducible [this keys-only? start-key reverse?]
     (if keys-only?
       (reify
@@ -374,14 +374,14 @@
         (kvreduce [this f3 init]
           (with-txn txn (dbi-reduce-kv dbi txn f3 init start-key reverse?))))))
   
-  PAppendableDatabase
-  ;; database must fresh and sequential writes must be in key order
+  PAppendableBucket
+  ;; bucket must fresh and sequential writes must be in key order
   (-append! [this key val]
     (io!)
     (if-let [tx (-txn storage)]
       (dbi-store dbi tx key val [PutFlags/MDB_APPEND])
       (throw (ex-info "Must be in transaction to append!"
-                      {:db this
+                      {:bucket this
                        :key key
                        :val val})))
     this)
@@ -399,10 +399,10 @@
 
   (-rotxn [this] rotxn)
 
-  (-open-database! [this dbkey flags]
+  (-open-bucket! [this bkey flags]
     (io!)
-    (let [dbi (.openDbi env (key-encode dbkey) (dbiflags flags))]
-      (->Database this dbi nil)))
+    (let [dbi (.openDbi env (key-encode bkey) (dbiflags flags))]
+      (->Bucket this dbi nil)))
 
   (-begin! [this flags]
     (io!)

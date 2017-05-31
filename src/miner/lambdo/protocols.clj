@@ -1,6 +1,6 @@
 (ns miner.lambdo.protocols)
 
-
+;; open way to implement clojure.core/contains?, but with a better name
 (defprotocol PKeyed
   (-key? [this key]))
 
@@ -10,14 +10,14 @@
   (-next-key [this key])
   (-previous-key [this key]))
 
-(defprotocol PReducibleDatabase
+(defprotocol PReducibleBucket
   (-reducible [this keys-only? start-key reverse?]))
 
-(defprotocol PAppendableDatabase
+(defprotocol PAppendableBucket
   (-append! [this key val]))
 
 (defprotocol PStorage
-  (-open-database! [this dbkey flags])
+  (-open-bucket! [this bkey flags])
   (-begin! [this flags])
   (-commit! [this])
   (-rollback! [this])
@@ -26,7 +26,8 @@
 
 (defprotocol PSortedSnapshot
   (sorted-snapshot? [this]))
-  
+
+
 (extend-protocol PKeyed
   clojure.lang.Associative
   (-key? [this key] (.containsKey this key))

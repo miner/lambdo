@@ -55,7 +55,7 @@
   (testing "Simple API"
     (let [pathname (make-tmpdir (str "LAMBDO_TEST_" (System/currentTimeMillis)))
           storage (create-storage! pathname)
-          test1 (create-database! storage :test1)]
+          test1 (create-bucket! storage :test1)]
       (println "simple-test path:" (str pathname))
       (begin! storage)
       (assoc! test1 :aaaaa "five")
@@ -111,7 +111,7 @@
   (testing "Key Nav API"
     (let [pathname (make-tmpdir (str "LAMBDO_KTEST_" (System/currentTimeMillis)))
           storage (create-storage! pathname)
-          test2 (create-database! storage :test2)]
+          test2 (create-bucket! storage :test2)]
       (begin! storage)
       (assoc! test2 :a 11 :b 22 :c 33 :d 44)
       (commit! storage)
@@ -142,7 +142,4 @@
         (is (= dn nil))
         (is (= fk :a))
         (is (= lk :d))))))
-
-        
-
 
