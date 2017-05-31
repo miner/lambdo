@@ -55,17 +55,30 @@
 ;; is given, results start at that key and end at the last or first key (as appropriate for
 ;; rev?).  A start-key of nil (the default) indicates first or last as appropriate for rev?.
 
-(defn open-database [storage dbkey]
-  (-open-database! storage dbkey nil))
-
-(defn create-database! [storage dbkey]
-  (-open-database! storage dbkey [DbiFlags/MDB_CREATE]))
-
 (defn begin! [storage] (-begin! storage nil))
 
 (defn commit! [storage] (-commit! storage))
 
 (defn rollback! [storage] (-rollback! storage))
+
+(defn open-database [storage dbkey]
+  (-open-database! storage dbkey nil))
+
+;; fill with optional snapshot
+(defn create-database!
+  ([storage dbkey]
+   (-open-database! storage dbkey [DbiFlags/MDB_CREATE]))
+  ([storage dbkey snapshot]
+   (let [db (create-database! storage dbkey)]
+     (begin! storage)
+     ;; faster if snapshot is sorted and database starts empty
+     ;; reduce-kv result is ignored, just for side-effect
+     (if (sorted-snapshot? snapshot)
+       (reduce-kv (fn [_ k v] (-append! db k v) nil) nil snapshot)
+       (reduce-kv (fn [_ k v] (assoc! db k v) nil) nil snapshot))
+     (commit! storage)
+     ;; return opened database
+     db)))
 
 ;; maybe call it db-slice, db-view
 ;; important: not a seq, just a reducible
@@ -93,19 +106,3 @@
 ;; see also persistent! which returns sorted-map for better consistency with db
 (defn snapshot [db] (persistent! (reduce-kv assoc! (transient {}) db)))
 
-;; need a create-database-from-snapshot
-;; order is important when loading a new database
-
-;; untested
-;; should only create new, not overwrite existing
-(defn create-database-from-snapshot! [storage dbkey snapshot]
-  (let [db (create-database! storage dbkey)]
-    (begin! storage)
-    ;; faster if snapshot is sorted and database starts empty
-    ;; reduce-kv result is ignored, just for side-effect
-    (if (sorted-snapshot? snapshot)
-      (reduce-kv (fn [_ k v] (-append! db k v) nil) nil snapshot)
-      (reduce-kv (fn [_ k v] (assoc! db k v) nil) nil snapshot))
-    (commit! storage)
-    ;; return opened database
-    db))
