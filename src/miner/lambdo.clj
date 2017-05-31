@@ -29,7 +29,7 @@
   storage)
 
 
-;; a Database is accessed like an ITransientMap.
+;; a Bucket is accessed like an ITransientMap.
 ;; Important note: all LMDB requires user to guarantee thread isolation.  Clojure transients
 ;; are like that, too.
 ;;
@@ -47,7 +47,7 @@
 ;; rsubseq
 ;; 
 ;;
-;; a database is a reducible -- in that it works as the "collection" final arg for a
+;; a bucket is a reducible -- in that it works as the "collection" final arg for a
 ;; 'reduce', 'reduce-kv' or 'transduce' call.  Slices can be used similarly with
 ;; reducible-keys and reducible-kvs.  Both take a db, then optional 'start-key' and optional
 ;; 'rev?' boolean.  Optional 'rev?' (boolean) determines if results are normal lexigraphical
@@ -71,7 +71,7 @@
   ([storage bkey snapshot]
    (let [bucket (create-bucket! storage bkey)]
      (begin! storage)
-     ;; faster if snapshot is sorted and database starts empty
+     ;; faster if snapshot is sorted and bucket starts empty
      ;; reduce-kv result is ignored, just for side-effect
      (if (sorted-snapshot? snapshot)
        (reduce-kv (fn [_ k v] (-append! bucket k v) nil) nil snapshot)
