@@ -47,13 +47,19 @@
 ;; rsubseq
 ;; 
 ;;
-;; a bucket is a reducible -- in that it works as the "collection" final arg for a
-;; 'reduce', 'reduce-kv' or 'transduce' call.  Slices can be used similarly with
-;; reducible-keys and reducible-kvs.  Both take a db, then optional 'start-key' and optional
-;; 'rev?' boolean.  Optional 'rev?' (boolean) determines if results are normal lexigraphical
-;; by key (rev? = false, the default), or reverse lexigraphical (rev? = true).  If start-key
-;; is given, results start at that key and end at the last or first key (as appropriate for
-;; rev?).  A start-key of nil (the default) indicates first or last as appropriate for rev?.
+;; a Bucket is a "reducible" -- in that it works as the "collection" final arg for a
+;; 'reduce', 'reduce-kv' or 'transduce' call.  The bucket is naturally Sorted (as if by
+;; pr-compare) so the keys and entries are always visited in pr-compare order.
+;;
+;; Slices of the bucket can be specified with `reducible` which takes a bucket, then
+;; optional :keys-only? bool, :start start-key, and :reverse? bool.  Optional :reverse?
+;; (boolean) determines if results are in lexigraphical order by key (:reverse? false, the
+;; default), or lexigraphically reverse order.  If :start is given, results start at that key and
+;; end at the last or first key (as appropriate for :reverse?).  A start key of nil (the
+;; default) indicates first or last as appropriate for :reverse?.  If :keys-only? true, only
+;; keys will be returned.  The default is false, in which case, map-entries (vector of key
+;; and value) are returned as appropriate for reduce-kv.
+
 
 (defn begin! [storage] (-begin! storage nil))
 
@@ -90,7 +96,7 @@
 (defn reducible [bucket & {:keys [keys-only? start reverse?]}]
   (-reducible bucket keys-only? start reverse?))
 
-;; same idea as contains? but implemented with a PKeyed protocol, and a less controversial name
+;; same idea as contains? but implemented with a PKeyed protocol, using my perferred name
 (defn key? [bucket key]
   (-key? bucket key))
 
@@ -103,6 +109,7 @@
 (defn last-key [bucket] (-last-key bucket))
 
 ;; returns plain hash-map (not sorted)
-;; see also persistent! which returns sorted-map for better consistency with bucket
-(defn snapshot [bucket] (persistent! (reduce-kv assoc! (transient {}) bucket)))
+;; see also (persistent! bucket) which returns a sorted-map for better consistency with Bucket
+(defn snapshot [bucket]
+  (persistent! (reduce-kv assoc! (transient {}) bucket)))
 
