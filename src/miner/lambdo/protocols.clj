@@ -22,7 +22,8 @@
   (-commit! [this])
   (-rollback! [this])
   (-txn [this])
-  (-rotxn [this]))
+  (-rotxn [this])
+  (-bucket-keys [this]))
 
 (defprotocol PSortedSnapshot
   (sorted-snapshot? [this]))

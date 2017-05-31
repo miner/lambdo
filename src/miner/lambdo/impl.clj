@@ -45,7 +45,7 @@
 (defn env-close [^Env env]
   (.close env))
 
-;; Should be obsolete, but still used in tests
+;; Obsolete, but still used in tests, use Storage -open-bucket! instead
 (defn open-dbi
   ;; returns Dbi
   ([env] (open-dbi env nil))
@@ -424,6 +424,10 @@
         (.abort txn)
         (set! txn parent)))
     this)
+
+  (-bucket-keys [this]
+    (map key-decode (.getDbiNames env)))
+
 
   java.io.Closeable
   (close [this]

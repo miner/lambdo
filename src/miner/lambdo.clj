@@ -113,3 +113,5 @@
 (defn snapshot [bucket]
   (persistent! (reduce-kv assoc! (transient {}) bucket)))
 
+(defn bucket-list [storage]
+  (-bucket-keys storage))
