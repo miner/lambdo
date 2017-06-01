@@ -16,7 +16,7 @@
 (defprotocol PAppendableBucket
   (-append! [this key val]))
 
-(defprotocol PStorage
+(defprotocol PDatabase
   (-open-bucket! [this bkey flags])
   (-begin! [this flags])
   (-commit! [this])

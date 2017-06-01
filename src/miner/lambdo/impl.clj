@@ -45,7 +45,7 @@
 (defn env-close [^Env env]
   (.close env))
 
-;; Obsolete, but still used in tests, use Storage -open-bucket! instead
+;; Obsolete, but still used in tests, use Database -open-bucket! instead
 (defn open-dbi
   ;; returns Dbi
   ([env] (open-dbi env nil))
@@ -226,20 +226,20 @@
 
 ;; may only be used within Bucket functions, assumes access to Bucket fields
 (defmacro ^:private with-txn [txn & body]
-  `(if-let [~txn (-txn ~'storage)]
+  `(if-let [~txn (-txn ~'database)]
      (do ~@body)
-     (let [~txn ^Txn (-rotxn ~'storage)]
+     (let [~txn ^Txn (-rotxn ~'database)]
        (try (.renew ~txn)
             ~@body
             (finally (.reset ~txn))))))
 
 
 (defmacro ^:private with-txn-cursor [txn cursor & body]
-  `(if-let [~txn (-txn ~'storage)]
+  `(if-let [~txn (-txn ~'database)]
      (let [~cursor (.openCursor ~'dbi ~txn)]
        (try ~@body
             (finally (.close ~cursor))))
-     (let [~txn ^Txn (-rotxn ~'storage)]
+     (let [~txn ^Txn (-rotxn ~'database)]
        (try (.renew ~txn)
             (if ~'ro-cursor
               (.renew ~'ro-cursor ~txn)
@@ -263,7 +263,7 @@
 ;; SEM FIXME: might be leaking a ro-cursor
 ;; never close the dbi, because LMDB does it that way
 
-(deftype Bucket [storage ^Dbi dbi ^:volatile-mutable ^Cursor ro-cursor]
+(deftype Bucket [database ^Dbi dbi ^:volatile-mutable ^Cursor ro-cursor]
   clojure.lang.ILookup
   (valAt [this key] (with-txn txn (dbi-fetch dbi txn key)))
   (valAt [this key not-found]
@@ -278,7 +278,7 @@
   clojure.lang.ITransientMap
   (assoc [this key val]
     (io!)
-    (if-let [tx (-txn storage)]
+    (if-let [tx (-txn database)]
       (dbi-store dbi tx key val)
       (dbi-store dbi key val))
     this)
@@ -291,16 +291,16 @@
   ;; sorted-map.
   ;; SEM: maybe we should cache the persistent sorted-map.  Clear cache on any assoc!
   (persistent [this]
-    (when-let [tx (-txn storage)]
-      (throw (ex-info "An open write transaction prevents persistent!.  The storage must commit! or rollback! first."
+    (when-let [tx (-txn database)]
+      (throw (ex-info "An open write transaction prevents persistent!.  The database must commit! or rollback! first."
                       {:txn tx
-                       :storage storage
+                       :database database
                        :bucket this})))
     (reduce-kv assoc (sorted-map-by pr-compare) this))
 
   (without [this key]
     (io!)
-    (if-let [tx (-txn storage)]
+    (if-let [tx (-txn database)]
       (dbi-delete dbi tx key val)
       (dbi-delete dbi key val))
     this)
@@ -378,7 +378,7 @@
   ;; bucket must fresh and sequential writes must be in key order
   (-append! [this key val]
     (io!)
-    (if-let [tx (-txn storage)]
+    (if-let [tx (-txn database)]
       (dbi-store dbi tx key val [PutFlags/MDB_APPEND])
       (throw (ex-info "Must be in transaction to append!"
                       {:bucket this
@@ -390,11 +390,11 @@
 
 
   
-(deftype Storage [dirpath
+(deftype Database [dirpath
                   ^Env env
                   ^Txn ^:unsynchronized-mutable txn
                   ^Txn ^:unsynchronized-mutable rotxn]
-  PStorage
+  PDatabase
   (-txn [this] txn)
 
   (-rotxn [this] rotxn)

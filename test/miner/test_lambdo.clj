@@ -54,29 +54,29 @@
 (deftest simple-test
   (testing "Simple API"
     (let [pathname (make-tmpdir (str "LAMBDO_TEST_" (System/currentTimeMillis)))
-          storage (create-storage! pathname)
-          test1 (create-bucket! storage :test1)]
+          database (create-database! pathname)
+          test1 (create-bucket! database :test1)]
       (println "simple-test path:" (str pathname))
-      (begin! storage)
+      (begin! database)
       (assoc! test1 :aaaaa "five")
       (assoc! test1 :foob "foo")
       (assoc! test1 :bar 'bar/bar)
       (assoc! test1 :baz {:a 1 :b 2 :c 3})
-      (commit! storage)
+      (commit! database)
       (let [foo (get test1 :foob)
             bar (get test1 :bar)
             baz (get test1 :baz)]
-        (begin! storage)
+        (begin! database)
         (let [foo2 (:foob test1)
               bar2 (:bar test1)
               baz2 (:baz test1)]
-          (commit! storage)
-          (begin! storage)
+          (commit! database)
+          (begin! database)
           (assoc! test1 :foob "BOOM")
-          (rollback! storage)
-          (begin! storage)
+          (rollback! database)
+          (begin! database)
           (assoc! test1 :bar 'BOOM)
-          (commit! storage)
+          (commit! database)
           (let [foo3 (get test1 :foob)
                 bar3 (get test1 :bar)
                 t1-str-vals (transduce (comp (map val) (filter string?)) conj [] test1)
@@ -88,7 +88,7 @@
                 all-test1 (reduce conj {} test1)
                 rev-test1 (reduce-kv conj [] (reducible test1 :reverse? true))
                 fob-test1 (reduce-kv conj [] (reducible test1 :start :dobzy))]
-            (close-storage! storage)
+            (close-database! database)
             (is (= t1-str-vals ["five" "foo"]))
             (is (= t1-keys) [:aaaaa :bar :baz :foob])
             (is (= t1-keys t1-trans-keys))
@@ -110,18 +110,18 @@
 (deftest key-nav-test
   (testing "Key Nav API"
     (let [pathname (make-tmpdir (str "LAMBDO_KTEST_" (System/currentTimeMillis)))
-          storage (create-storage! pathname)
-          test2 (create-bucket! storage :test2)]
-      (begin! storage)
+          database (create-database! pathname)
+          test2 (create-bucket! database :test2)]
+      (begin! database)
       (assoc! test2 :a 11 :b 22 :c 33 :d 44)
-      (commit! storage)
+      (commit! database)
       ;; transaction detour
-      (begin! storage)
+      (begin! database)
       (assoc! test2 :a 101)
       (dissoc! test2 :b)
       (is (nil? (:b test2)))
       (is (= 101 (:a test2)))
-      (rollback! storage)
+      (rollback! database)
       ;; confirm rollback
       (is (= (:b test2) 22))
       ;; back to key nav
@@ -133,7 +133,7 @@
             lk (last-key test2)
             pnil (previous-key test2 nil)
             nnil (next-key test2 nil)]
-        (close-storage! storage)
+        (close-database! database)
         (is (= pnil lk))
         (is (= nnil fk))
         (is (= ap nil))

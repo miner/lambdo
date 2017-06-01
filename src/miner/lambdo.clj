@@ -2,7 +2,7 @@
   (:require [clojure.java.io :as io]
             [miner.lambdo.impl :refer :all]
             [miner.lambdo.protocols :refer :all])
-  (:import (miner.lambdo.impl Storage Bucket)
+  (:import (miner.lambdo.impl Database Bucket)
            (org.lmdbjava Env EnvFlags Dbi DbiFlags)))
 
 
@@ -10,23 +10,23 @@
 
 ;; SEM FIXME: do something with options,  `create` ignored
 
-(defn open-storage ^Storage [dirpath & {:keys [size-mb create]}]
+(defn open-database ^Database [dirpath & {:keys [size-mb create]}]
   (let [^Env env (create-env dirpath (or size-mb 10))]
-    (->Storage dirpath
+    (->Database dirpath
                env
                nil
                (doto (.txnRead env) (.reset)))))
 
-(defn create-storage! ^Storage [dirpath & {:keys [size-mb]}]
+(defn create-database! ^Database [dirpath & {:keys [size-mb]}]
   (let [base (io/file dirpath)
         filepath (if (= (.getName base) ".") base (io/file base "."))]
     (io/make-parents filepath)
-    (open-storage filepath :size-mb size-mb :create true)))
+    (open-database filepath :size-mb size-mb :create true)))
 
-(defn close-storage! [^Storage storage]
+(defn close-database! [^Database database]
   (io!)
-  (.close storage)
-  storage)
+  (.close database)
+  database)
 
 
 ;; a Bucket is accessed like an ITransientMap.
@@ -61,28 +61,28 @@
 ;; and value) are returned as appropriate for reduce-kv.
 
 
-(defn begin! [storage] (-begin! storage nil))
+(defn begin! [database] (-begin! database nil))
 
-(defn commit! [storage] (-commit! storage))
+(defn commit! [database] (-commit! database))
 
-(defn rollback! [storage] (-rollback! storage))
+(defn rollback! [database] (-rollback! database))
 
-(defn open-bucket [storage bkey]
-  (-open-bucket! storage bkey nil))
+(defn open-bucket [database bkey]
+  (-open-bucket! database bkey nil))
 
 ;; fill with optional snapshot
 (defn create-bucket!
-  ([storage bkey]
-   (-open-bucket! storage bkey [DbiFlags/MDB_CREATE]))
-  ([storage bkey snapshot]
-   (let [bucket (create-bucket! storage bkey)]
-     (begin! storage)
+  ([database bkey]
+   (-open-bucket! database bkey [DbiFlags/MDB_CREATE]))
+  ([database bkey snapshot]
+   (let [bucket (create-bucket! database bkey)]
+     (begin! database)
      ;; faster if snapshot is sorted and bucket starts empty
      ;; reduce-kv result is ignored, just for side-effect
      (if (sorted-snapshot? snapshot)
        (reduce-kv (fn [_ k v] (-append! bucket k v) nil) nil snapshot)
        (reduce-kv (fn [_ k v] (assoc! bucket k v) nil) nil snapshot))
-     (commit! storage)
+     (commit! database)
      ;; return opened bucket
      bucket)))
 
@@ -113,5 +113,5 @@
 (defn snapshot [bucket]
   (persistent! (reduce-kv assoc! (transient {}) bucket)))
 
-(defn bucket-list [storage]
-  (-bucket-keys storage))
+(defn bucket-list [database]
+  (-bucket-keys database))
