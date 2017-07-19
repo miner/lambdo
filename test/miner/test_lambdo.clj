@@ -83,6 +83,13 @@
                 t1-trans-keys (transduce (map key) conj [] test1)
                 t1-trans-rev-keys (transduce (map key) conj () test1)
                 t1-keys (into [] (reducible test1 :keys-only? true))
+                t1-second-keys (into [] (reducible test1 :keys-only? true :step 2))
+                t1-rev-second-keys (into [] (reducible test1 :keys-only? true :step -2))
+                t1-second-keys-from-bar (into [] (reducible test1 :keys-only? true :start
+                                                            :bar :step 2))
+                t1-second-keys-to-bar (into [] (reducible test1 :keys-only? true :end
+                                                            :bar :step -2))                
+                t1-rev-second-keys (into [] (reducible test1 :keys-only? true :step -2))
                 t1-rev-keys (transduce (map key) conj [] (reducible test1 :step -1))
                 t1-pre-bazz (into [] (reducible test1 :end :bazz :step -1))
                 all-test1 (reduce conj {} test1)
@@ -92,6 +99,10 @@
             (close-database! database)
             (is (= t1-str-vals ["five" "foo"]))
             (is (= t1-keys) [:aaaaa :bar :baz :foob])
+            (is (= t1-second-keys-to-bar) [:foob :bar])
+            (is (= t1-second-keys-from-bar) [:bar :foob])
+            (is (= t1-rev-second-keys) [:foob :bar])
+            (is (= t1-second-keys) [:aaaaa :baz])
             (is (= t1-keys t1-trans-keys))
             (is (= t1-rev-keys t1-trans-rev-keys))
             (is (= t1-rev-keys) [:foob :baz :bar :aaaaa])
@@ -145,3 +156,36 @@
         (is (= fk :a))
         (is (= lk :d))))))
 
+(defn kwpad [n]
+  (let [ktemp "k0000000000"
+        klen (.length ktemp)
+        nstr (str n)
+        nlen (.length nstr)]
+    (keyword (str (subs ktemp 0 (- klen nlen)) nstr))))
+
+(deftest larger-test
+  (testing "Larger stuff"
+    (let [size 10000
+          pathname (make-tmpdir (str "LAMBDO_TEST_LARGE_" (System/currentTimeMillis)))
+          database (create-database! pathname)
+          snapshot (reduce (fn [res n] (assoc res (kwpad n) n)) (sorted-map) (range size))
+          test2 (create-bucket! database :test2 snapshot)]
+      (println "larger-test path:" (str pathname))
+      (begin! database)
+      (is (= (into [] (reducible test2 :keys-only? true :step 1000))
+             (map kwpad (range 0 size 1000))))
+      (is (= (into [] (reducible test2 :keys-only? true :step -1000))
+             (map kwpad (range (dec size) -1 -1000))))
+      (is (= (into [] (reducible test2 :keys-only? true :start (kwpad 100) :step 1000))
+             (map kwpad (range 100 size 1000))))
+      (is (= (into [] (reducible test2 :keys-only? true :start (kwpad 9000) :step -1000))
+             (map kwpad (range 9000 -1 -1000))))
+      (is (= (into [] (reducible test2 :keys-only? true :end (kwpad 100) :start (kwpad 9000)
+                                 :step -1000))
+             (map kwpad (range 9000 99 -1000))))
+      (is (= (reduce-kv (fn [r _k v] (+ r v)) 0 test2)   (reduce + (range size))))
+      (is (= (reduce-kv (fn [r _k v] (+ r v)) 0 (reducible test2 :start (kwpad 9000)
+                                                          :end (kwpad 100) :step -1000))
+             (reduce + 0 (range 9000 99 -1000))))
+
+      )))
