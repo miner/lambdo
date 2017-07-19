@@ -11,7 +11,7 @@
   (-previous-key [this key]))
 
 (defprotocol PReducibleBucket
-  (-reducible [this keys-only? start-key reverse?]))
+  (-reducible [this keys-only? start end step]))
 
 (defprotocol PAppendableBucket
   (-append! [this key val]))

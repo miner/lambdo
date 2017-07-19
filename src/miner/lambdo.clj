@@ -52,13 +52,16 @@
 ;; pr-compare) so the keys and entries are always visited in pr-compare order.
 ;;
 ;; Slices of the bucket can be specified with `reducible` which takes a bucket, then
-;; optional :keys-only? bool, :start start-key, and :reverse? bool.  Optional :reverse?
-;; (boolean) determines if results are in lexigraphical order by key (:reverse? false, the
-;; default), or lexigraphically reverse order.  If :start is given, results start at that key and
-;; end at the last or first key (as appropriate for :reverse?).  A start key of nil (the
-;; default) indicates first or last as appropriate for :reverse?.  If :keys-only? true, only
-;; keys will be returned.  The default is false, in which case, map-entries (vector of key
-;; and value) are returned as appropriate for reduce-kv.
+;; optional :keys-only? bool, :start key, :end key, and :step int.  Optional :step (int,
+;; default 1) can be used to skip intervening entries.  The sign of the step determines if
+;; results are in lexigraphical order by key (when :step is positive, the default), or
+;; lexigraphically reverse order (for a negative :step).  For example, :step 2 would yield
+;; every other entry.  The :start and :end are inclusive, but if the specified key does not
+;; exist, the next actual key will be used as appropriate for the step direction.  A nil
+;; value for the :start key or :end (the default) indicates first or last as appropriate for
+;; :step.  If :keys-only? is true, only keys will be returned.  The default is false, in
+;; which case, map-entries (vector of key and value) are returned as appropriate for
+;; reduce-kv.
 
 
 (defn begin! [database] (-begin! database nil))
@@ -93,8 +96,8 @@
 ;; SEM: consider how this relates to a Clojure eduction.  Do you want to add an xform?  Not
 ;; really.
 
-(defn reducible [bucket & {:keys [keys-only? start reverse?]}]
-  (-reducible bucket keys-only? start reverse?))
+(defn reducible [bucket & {:keys [keys-only? start end step] :or {step 1}}]
+  (-reducible bucket keys-only? start end step))
 
 ;; same idea as contains? but implemented with a PKeyed protocol, using my perferred name
 (defn key? [bucket key]

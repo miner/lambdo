@@ -7,6 +7,7 @@
            (clojure.lang MapEntry)
            (org.lmdbjava Env EnvFlags Dbi DbiFlags Txn TxnFlags PutFlags Stat GetOp
                          ByteArrayProxy Env$Builder
+                         KeyRange
                          Cursor CursorIterator CursorIterator$KeyVal CursorIterator$IteratorType) ))
 
 ;; All of impl is essentially private, not part of the public API
@@ -169,58 +170,69 @@
   ([^Dbi dbi key val] (.delete dbi (key-encode key)))
   ([^Dbi dbi ^Txn txn key val] (.delete dbi txn (key-encode key))))
 
+;; start and end are inclusive
+;; step zero is undefined (but treated like positive for now)
+(defn ^KeyRange key-range [start end step]
+  (let [start (when start (key-encode start))
+        end (when end (key-encode end))]
+    (if (neg? step)
+      (cond (and (nil? start) (nil? end)) (KeyRange/allBackward)
+            (nil? start) (KeyRange/atMostBackward end)
+            (nil? end) (KeyRange/atLeastBackward start)
+            :else (KeyRange/closedBackward start end))
+      (cond (and (nil? start) (nil? end))  (KeyRange/all)
+            (nil? start)  (KeyRange/atMost end)
+            (nil? end) (KeyRange/atLeast start)
+            :else (KeyRange/closed start end)))))
 
-(defn dbi-reduce-kv [^Dbi dbi ^Txn txn f3 init start-key rev?]
-  (let [^CursorIterator iter (.iterate dbi txn (when start-key (key-encode start-key))
-                                       (if rev?
-                                         CursorIterator$IteratorType/BACKWARD
-                                         CursorIterator$IteratorType/FORWARD))]
-    (loop [res init check-first (and rev? start-key)]
+(defn abs ^long [^long n]
+  (if (neg? n) (- n) n))
+
+(defn dbi-reduce-kv  [^Dbi dbi ^Txn txn f3 init start end step]
+  (let [^CursorIterator iter (.iterate dbi txn (key-range start end step))
+        skip (long (dec (abs step)))]
+    (loop [res init sk 0]
       (if (.hasNext iter)
         (let [^CursorIterator$KeyVal kv (.next iter)
               k (key-decode ^bytes (.key kv))]
-          (if (and check-first (not= k start-key))
-            (recur res nil)
+          (if (pos? sk)
+            (recur res (dec sk))
             (let [v (val-decode ^bytes (.val kv))
                   res (f3 res k v)]
               (if (reduced? res)
                 @res
-                (recur res nil)))))
+                (recur res skip)))))
         res))))
 
-(defn dbi-reduce [^Dbi dbi ^Txn txn f init start-key rev?]
-  (let [^CursorIterator iter (.iterate dbi txn (when start-key (key-encode start-key))
-                                       (if rev?
-                                         CursorIterator$IteratorType/BACKWARD
-                                         CursorIterator$IteratorType/FORWARD))]
-    (loop [res init check-first (and rev? start-key)]
+(defn dbi-reduce [^Dbi dbi ^Txn txn f init start end step]
+  (let [^CursorIterator iter (.iterate dbi txn (key-range start end step))
+        skip (long (dec (abs step)))]
+    (loop [res init sk 0]
       (if (.hasNext iter)
         (let [^CursorIterator$KeyVal kv (.next iter)
               k (key-decode ^bytes (.key kv))]
-          (if (and check-first (not= k start-key))
-            (recur res nil)
+          (if (pos? sk)
+            (recur res (dec sk))
             (let [v (val-decode ^bytes (.val kv))
                   res (f res (MapEntry/create k v))]
               (if (reduced? res)
                 @res
-                (recur res nil)))))
+                (recur res skip)))))
         (f res)))))
 
-(defn dbi-reduce-keys [^Dbi dbi ^Txn txn f init start-key rev?]
-  (let [^CursorIterator iter (.iterate dbi txn (when start-key (key-encode start-key))
-                                       (if rev?
-                                         CursorIterator$IteratorType/BACKWARD
-                                         CursorIterator$IteratorType/FORWARD))]
-    (loop [res init check-first (and rev? start-key)]
+(defn dbi-reduce-keys [^Dbi dbi ^Txn txn f init start end step]
+  (let [^CursorIterator iter (.iterate dbi txn (key-range start end step))
+        skip (long (dec (abs step)))]
+    (loop [res init sk 0]
       (if (.hasNext iter)
         (let [^CursorIterator$KeyVal kv (.next iter)
               k (key-decode ^bytes (.key kv))]
-          (if (and check-first (not= k start-key))
-            (recur res nil)
+          (if (pos? sk)
+            (recur res (dec sk))
             (let [res (f res k)]
               (if (reduced? res)
                 @res
-                (recur res nil)))))
+                (recur res skip)))))
         res))))
 
 
@@ -310,26 +322,30 @@
 
   clojure.lang.Seqable
   (seq [this]
-    (with-txn txn (dbi-reduce dbi txn conj () nil true)))
+    (with-txn txn (dbi-reduce dbi txn conj () nil nil -1)))
 
   clojure.lang.IReduce
   (reduce [this f]
-    (with-txn txn (dbi-reduce dbi txn f (f) nil false)))
+    (with-txn txn (dbi-reduce dbi txn f (f) nil nil 1)))
 
   clojure.lang.IReduceInit
   (reduce [this f init]
-    (with-txn txn (dbi-reduce dbi txn f init nil false)))
+    (with-txn txn (dbi-reduce dbi txn f init nil nil 1)))
 
   clojure.lang.IKVReduce
   (kvreduce [this f3 init]
-    (with-txn txn (dbi-reduce-kv dbi txn f3 init nil false)))
+    (with-txn txn (dbi-reduce-kv dbi txn f3 init nil nil 1)))
 
   ;; SEM -- note Clojure ascending is opposite sense of lambdo reverse?
   clojure.lang.Sorted
   (comparator [this] pr-compare)
   (entryKey [this entry] (key entry))
-  (seq [this ascending] (with-txn txn (dbi-reduce dbi txn conj () nil ascending)))
-  (seqFrom [this key ascending] (seq (with-txn txn (dbi-reduce dbi txn conj [] key (not ascending)))))
+  (seq [this ascending] (with-txn txn (dbi-reduce dbi txn conj () nil nil (if ascending -1 1))))
+  (seqFrom [this key ascending]
+    (with-txn txn
+      (if ascending
+        (dbi-reduce dbi txn conj () nil key -1)
+        (dbi-reduce dbi txn conj () key nil 1))))    
 
   PKeyed
   (-key? [this key]
@@ -350,29 +366,29 @@
                                (cursor-previous-key cursor key)))
   
   PReducibleBucket
-  (-reducible [this keys-only? start-key reverse?]
+  (-reducible [this keys-only? start end step]
     (if keys-only?
       (reify
         clojure.lang.Seqable
         (seq [this]
-          (with-txn txn (dbi-reduce-keys dbi txn conj () start-key (not reverse?))))
+          (with-txn txn (dbi-reduce-keys dbi txn conj () end start (- step))))
 
         clojure.lang.IReduceInit
         (reduce [this f init]
-          (with-txn txn (dbi-reduce-keys dbi txn f init start-key reverse?))))
+          (with-txn txn (dbi-reduce-keys dbi txn f init start end step))))
 
       (reify
         clojure.lang.Seqable
         (seq [this]
-          (with-txn txn (dbi-reduce dbi txn conj () start-key (not reverse?))))
+          (with-txn txn (dbi-reduce dbi txn conj () end start (- step))))
 
         clojure.lang.IReduceInit
         (reduce [this f init]
-          (with-txn txn (dbi-reduce dbi txn f init start-key reverse?)))
+          (with-txn txn (dbi-reduce dbi txn f init start end step)))
 
         clojure.lang.IKVReduce
         (kvreduce [this f3 init]
-          (with-txn txn (dbi-reduce-kv dbi txn f3 init start-key reverse?))))))
+          (with-txn txn (dbi-reduce-kv dbi txn f3 init start end step))))))
   
   PAppendableBucket
   ;; bucket must fresh and sequential writes must be in key order
