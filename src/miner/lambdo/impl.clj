@@ -193,11 +193,12 @@
         skip (long (dec (abs step)))]
     (loop [res init sk 0]
       (if (.hasNext iter)
-        (let [^CursorIterator$KeyVal kv (.next iter)
-              k (key-decode ^bytes (.key kv))]
+        (let [^CursorIterator$KeyVal kv (.next iter)]
+          ;; always call .next to advance iter
           (if (pos? sk)
             (recur res (dec sk))
-            (let [v (val-decode ^bytes (.val kv))
+            (let [k (key-decode ^bytes (.key kv))
+                  v (val-decode ^bytes (.val kv))
                   res (f3 res k v)]
               (if (reduced? res)
                 @res
@@ -209,11 +210,12 @@
         skip (long (dec (abs step)))]
     (loop [res init sk 0]
       (if (.hasNext iter)
-        (let [^CursorIterator$KeyVal kv (.next iter)
-              k (key-decode ^bytes (.key kv))]
+        (let [^CursorIterator$KeyVal kv (.next iter)]
+          ;; always call .next to advance iter
           (if (pos? sk)
             (recur res (dec sk))
-            (let [v (val-decode ^bytes (.val kv))
+            (let [k (key-decode ^bytes (.key kv))
+                  v (val-decode ^bytes (.val kv))
                   res (f res (MapEntry/create k v))]
               (if (reduced? res)
                 @res
@@ -225,11 +227,12 @@
         skip (long (dec (abs step)))]
     (loop [res init sk 0]
       (if (.hasNext iter)
-        (let [^CursorIterator$KeyVal kv (.next iter)
-              k (key-decode ^bytes (.key kv))]
+        (let [^CursorIterator$KeyVal kv (.next iter)]
+          ;; always call .next to advance iter
           (if (pos? sk)
             (recur res (dec sk))
-            (let [res (f res k)]
+            (let [k (key-decode ^bytes (.key kv))
+                  res (f res k)]
               (if (reduced? res)
                 @res
                 (recur res skip)))))
