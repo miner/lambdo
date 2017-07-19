@@ -8,7 +8,7 @@
            (org.lmdbjava Env EnvFlags Dbi DbiFlags Txn TxnFlags PutFlags Stat GetOp
                          ByteArrayProxy Env$Builder
                          KeyRange
-                         Cursor CursorIterator CursorIterator$KeyVal CursorIterator$IteratorType) ))
+                         Cursor CursorIterator CursorIterator$KeyVal) ))
 
 ;; All of impl is essentially private, not part of the public API
 
