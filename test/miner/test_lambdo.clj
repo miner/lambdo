@@ -12,6 +12,7 @@
                 tmp)))
 
 
+#_
 (defn write-stuff [env]
   (is env)
   (let [dbi (open-dbi env)]
@@ -23,6 +24,7 @@
     (dbi-store dbi '[ka] '[k a])
     (dbi-store dbi :a1 '{:a1 "a1" :A1 '(a 1)})))
 
+#_
 (defn read-stuff [env]
   (let [dbi (open-dbi env)
         txn (read-txn env)
@@ -38,6 +40,7 @@
     (is (= ka '[k a]))
     (is (= a1 '{:a1 "a1" :A1 '(a 1)}))))
 
+#_
 (deftest low-level-test
   (testing "Make an LMDB environment"
     (let [env (create-env (make-tmpdir "LAMBDO_TEST"))]

@@ -1,5 +1,16 @@
 (ns miner.lambdo.protocols)
 
+(defprotocol PEncoder
+  (-dbi [this])
+  (-encode-key [this key])
+  (-decode-key [this raw])
+  (-encode-val [this value])
+  (-decode-val [this raw]))
+
+
+(defprotocol PBucket
+  (-encoder [this]))
+
 ;; open way to implement clojure.core/contains?, but with a better name
 (defprotocol PKeyed
   (-key? [this key]))
