@@ -1,15 +1,11 @@
 (ns miner.lambdo.protocols)
 
-(defprotocol PEncoder
+(defprotocol PBucketAccess
   (-dbi [this])
   (-encode-key [this key])
   (-decode-key [this raw])
   (-encode-val [this value])
   (-decode-val [this raw]))
-
-
-(defprotocol PBucket
-  (-encoder [this]))
 
 ;; open way to implement clojure.core/contains?, but with a better name
 (defprotocol PKeyed
@@ -40,6 +36,11 @@
   (sorted-snapshot? [this]))
 
 
+;; https://dev.clojure.org/jira/browse/CLJ-1023  work-around
+;; hack to make mutable ro-cursor accessible
+(defprotocol PSetROCursor
+  (-set-ro-cursor! [this cursor]))
+                  
 (extend-protocol PKeyed
   clojure.lang.Associative
   (-key? [this key] (.containsKey this key))
