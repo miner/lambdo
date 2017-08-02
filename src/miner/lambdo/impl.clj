@@ -315,11 +315,11 @@
 ;; SEM Refactoring:  encoder is really PBucketAccess
 
 ;; Be careful about changing field names, some macros literally depend on them.
-(deftype Bucket [database encoder ^:volatile-mutable ^Cursor ro-cursor]
+(deftype Bucket [database encoder ^:unsynchronized-mutable ^Cursor ro-cursor]
 
   PSetROCursor
   ;;  https://dev.clojure.org/jira/browse/CLJ-1023  work-around
-  (-set-ro-cursor! [this cursor] (try (set! (.ro-cursor this) cursor)) cursor)
+  (-set-ro-cursor! [this cursor] (set! ro-cursor cursor))
   
   PBucketAccess
   (-dbi [this] (-dbi encoder))
