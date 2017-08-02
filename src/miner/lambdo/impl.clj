@@ -335,10 +335,11 @@
 
   (valAt [this key not-found]
     (let [kcode (-encode-key encoder key)]
-      (with-cursor cursor 
-        (if (cursor-has-kcode? cursor kcode)
-          (-decode-val encoder ^bytes (.val ^Cursor cursor))
-          not-found))))
+      (if-let [raw (with-cursor cursor 
+                     (when (cursor-has-kcode? cursor kcode)
+                       (.val ^Cursor cursor)))]
+        (-decode-val encoder ^bytes raw)
+        not-found)))
 
   ;; No, it should not be Associative -- that implies IPersistentCollection and we are not
   ;; Persistent.  We would have to use separate transactions to allow the old to persist
