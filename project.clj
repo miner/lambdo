@@ -1,4 +1,4 @@
-(defproject com.velisco/lambdo "0.2.0"
+(defproject com.velisco/lambdo "0.3.0"
   :description "Lambdo, Clojure key/value database based on LMDB"
   :url "https://github.com/miner/lambdo"
   :license {:name "Eclipse Public License"

@@ -12,48 +12,6 @@
                 tmp)))
 
 
-#_
-(defn write-stuff [env]
-  (is env)
-  (let [dbi (open-dbi env)]
-    (is dbi)
-    ;; auto transactions on each store
-    (dbi-store dbi "foo" "bar")
-    (dbi-store dbi 1 "one")
-    (dbi-store dbi "one" 1)
-    (dbi-store dbi '[ka] '[k a])
-    (dbi-store dbi :a1 '{:a1 "a1" :A1 '(a 1)})))
-
-#_
-(defn read-stuff [env]
-  (let [dbi (open-dbi env)
-        txn (read-txn env)
-        foo (dbi-fetch dbi txn "foo")
-        x1 (dbi-fetch dbi txn 1)
-        one (dbi-fetch dbi txn "one")
-        ka (dbi-fetch dbi txn '[ka])
-        a1 (dbi-fetch dbi txn :a1)]
-    (txn-reset txn)
-    (is (= foo "bar"))
-    (is (= x1 "one"))
-    (is (= one 1))
-    (is (= ka '[k a]))
-    (is (= a1 '{:a1 "a1" :A1 '(a 1)}))))
-
-#_
-(deftest low-level-test
-  (testing "Make an LMDB environment"
-    (let [env (create-env (make-tmpdir "LAMBDO_TEST"))]
-      (write-stuff env)
-      (read-stuff env)
-      (.close env))
-
-    ;; re-opening existing database and checking again
-    (let [env (create-env (make-tmpdir "LAMBDO_TEST"))]
-      (read-stuff env)
-      (.close env))))
-
-
 (deftest simple-test
   (testing "Simple API"
     (let [pathname (make-tmpdir (str "LAMBDO_TEST_" (System/currentTimeMillis)))

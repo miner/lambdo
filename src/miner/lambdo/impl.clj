@@ -46,23 +46,10 @@
 (defn env-close [^Env env]
   (.close env))
 
-;; SEM REMOVE
-;; Obsolete, but still used in tests, use Database -open-bucket! instead
-(defn open-dbi
-  ;; returns Dbi
-  ([env] (open-dbi env nil))
-  ([env dbname] (open-dbi env dbname [DbiFlags/MDB_CREATE]))
-  ([^Env env ^String dbname flags]   (.openDbi env
-                                               dbname
-                                               (dbiflags flags))))
-
-
-
 
 ;; could use with-open to create txn
 ;; but it's a feature that txn can be recycled with reset and renew so you don't always want
 ;; to close them
-
 
 
 ;; might be nested in parent, but can be nil
@@ -124,11 +111,6 @@
     (nip/fast-thaw ^bytes barr)))
 
 
-#_ (defn dbi-fetch [^Dbi dbi ^Txn txn key] 
-  ;; takes a Clojure key and returns a Clojure value.
-  (val-decode (.get dbi txn (key-encode key))))
-
-
 ;; SEM: FIXME.  There must be a better way.  Maybe lower level.  But for now, we need
 ;; something that works.
 ;;
@@ -163,27 +145,11 @@
     (cursor-last-kcode cursor)))
 
 
-#_ (defn dbi-count [^Dbi dbi ^Txn txn]
-  (.entries ^Stat (.stat dbi txn)))
-    
-  
-;; return true if newly stored, false if key was already there and flags indicated not to
-;; overwrite
-
-;; SEM FIXME: do we really need multi-arity?  Probably not
-#_ (defn dbi-store
-  ([^Dbi dbi key val] (.put dbi (key-encode key) (val-encode val)))
-  ([^Dbi dbi ^Txn txn key val] (dbi-store dbi txn key val nil))
-  ([^Dbi dbi ^Txn txn key val flags]
-   (.put dbi txn (key-encode key) (val-encode val) (putflags flags))))
-
-
-#_ (defn dbi-delete
-  ([^Dbi dbi key val] (.delete dbi (key-encode key)))
-  ([^Dbi dbi ^Txn txn key val] (.delete dbi txn (key-encode key))))
-
-;; start and end are inclusive
-;; step zero is undefined (but treated like positive for now)
+;; start and end are inclusive,  "closed" intervals
+;; must be encoded already (except nil)
+;; start or end = nil means the first or last
+;; step zero is undefined 
+;; public miner.lambdo/reducible converts step nil and 0 to 1, so not handled here
 
 ;; SEM new requirement.  All keys must be encoded before calling!
 (defn ^KeyRange key-range [start end step]
@@ -201,7 +167,7 @@
   (if (neg? n) (- n) n))
 
 
-;; bucket-reduce* really just takes a PEncoder as first arg, usually a bucket, but not
+;; bucket-reduce* really just takes a PBucketAccess as first arg, usually a bucket, but not
 ;; necessarily
 
 (defn bucket-reduce-kv  [bucket ^Txn txn f3 init start end step]
