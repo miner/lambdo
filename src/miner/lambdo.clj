@@ -96,8 +96,9 @@
 ;; SEM: consider how this relates to a Clojure eduction.  Do you want to add an xform?  Not
 ;; really.
 
-(defn reducible [bucket & {:keys [keys-only? start end step] :or {step 1}}]
-  (-reducible bucket keys-only? start end step))
+(defn reducible [bucket & {:keys [keys-only? start end step]}]
+  (let [step (if (or (nil? step) (zero? step)) 1 step)]
+    (-reducible bucket keys-only? start end step)))
 
 ;; same idea as contains? but implemented with a PKeyed protocol, using my perferred name
 (defn key? [bucket key]

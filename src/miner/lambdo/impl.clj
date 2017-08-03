@@ -432,7 +432,7 @@
       (reify
         clojure.lang.Seqable
         (seq [this]
-          (with-txn txn (bucket-reduce-keys encoder txn conj () end start (- step))))
+          (seq (with-txn txn (bucket-reduce-keys encoder txn conj [] start end step))))
 
         clojure.lang.IReduceInit
         (reduce [this f init]
@@ -441,7 +441,7 @@
       (reify
         clojure.lang.Seqable
         (seq [this]
-          (with-txn txn (bucket-reduce encoder txn conj () end start (- step))))
+          (seq (with-txn txn (bucket-reduce encoder txn conj [] start end step))))
 
         clojure.lang.IReduceInit
         (reduce [this f init]
