@@ -46,6 +46,7 @@
 (defn env-close [^Env env]
   (.close env))
 
+;; SEM REMOVE
 ;; Obsolete, but still used in tests, use Database -open-bucket! instead
 (defn open-dbi
   ;; returns Dbi
@@ -96,21 +97,34 @@
 ;; We're using edn strings instead.  UTF_8 should be good for mostly ASCII strings, and safe for
 ;; cross-platform use.
 
-(defn key-encode ^bytes [val]
-  (.getBytes (pr-str val) StandardCharsets/UTF_8))
 
-(defn key-decode [^bytes barr]
-  (edn/read-string (String. barr StandardCharsets/UTF_8)))
+(defn str-encode ^bytes [str]
+  (when str
+    (.getBytes ^String str StandardCharsets/UTF_8)))
 
-(defn val-encode ^bytes [val]
+(defn str-decode [^bytes barr]
+  (when barr
+    (String. barr StandardCharsets/UTF_8)))
+
+(defn pr-encode ^bytes [val]
+  (when val
+    (.getBytes (pr-str val) StandardCharsets/UTF_8)))
+
+(defn pr-decode [^bytes barr]
+  (when barr
+    (edn/read-string (String. barr StandardCharsets/UTF_8))))
+
+
+
+(defn nip-encode ^bytes [val]
   (nip/fast-freeze val))
 
-(defn val-decode [barr]
+(defn nip-decode [barr]
   (when barr
     (nip/fast-thaw ^bytes barr)))
 
 
-(defn dbi-fetch [^Dbi dbi ^Txn txn key] 
+#_ (defn dbi-fetch [^Dbi dbi ^Txn txn key] 
   ;; takes a Clojure key and returns a Clojure value.
   (val-decode (.get dbi txn (key-encode key))))
 
@@ -120,38 +134,36 @@
 ;;
 ;; Explicitly check that the dbi has a key, as opposed to getting a nil val which could be a
 ;; miss or could be an actual nil value for that key.
-(defn cursor-has-key? [^Cursor cursor key]
-  (let [kcode (key-encode key)]
-    (.get cursor kcode GetOp/MDB_SET)))
+(defn cursor-has-kcode? [^Cursor cursor kcode]
+  (.get cursor kcode GetOp/MDB_SET))
 
 
 ;; Maybe improvements? Untested
-(defn cursor-first-key [^Cursor cursor]
-  (and (.first cursor) (key-decode (.key cursor))))
+(defn cursor-first-kcode [^Cursor cursor]
+  (and (.first cursor) (.key cursor)))
 
-(defn cursor-last-key [^Cursor cursor]
-  (and (.last cursor) (key-decode (.key cursor))))
+(defn cursor-last-kcode [^Cursor cursor]
+  (and (.last cursor) (.key cursor)))
 
-(defn cursor-next-key [^Cursor cursor key]
-  (if key
-    (let [kcode (key-encode key)]
+(defn cursor-next-kcode [^Cursor cursor kcode]
+  (if kcode
       (when (if (.get cursor kcode GetOp/MDB_SET)
               (.next cursor)
               (.get cursor kcode GetOp/MDB_SET_RANGE))
-        (key-decode (.key cursor))))
-    (cursor-first-key cursor)))
+        (.key cursor))
+    (cursor-first-kcode cursor)))
     
-(defn cursor-previous-key [^Cursor cursor key]
-  (if key
-    (let [kcode (key-encode key)]
+(defn cursor-previous-kcode [^Cursor cursor kcode]
+  (if kcode
+    (do
       (when-not (.get cursor kcode GetOp/MDB_SET)
         (.get cursor kcode GetOp/MDB_SET_RANGE))
       (when (.prev cursor)
-        (key-decode (.key cursor))))
-    (cursor-last-key cursor)))
+        (.key cursor)))
+    (cursor-last-kcode cursor)))
 
 
-(defn dbi-count [^Dbi dbi ^Txn txn]
+#_ (defn dbi-count [^Dbi dbi ^Txn txn]
   (.entries ^Stat (.stat dbi txn)))
     
   
@@ -159,22 +171,22 @@
 ;; overwrite
 
 ;; SEM FIXME: do we really need multi-arity?  Probably not
-(defn dbi-store
+#_ (defn dbi-store
   ([^Dbi dbi key val] (.put dbi (key-encode key) (val-encode val)))
   ([^Dbi dbi ^Txn txn key val] (dbi-store dbi txn key val nil))
   ([^Dbi dbi ^Txn txn key val flags]
    (.put dbi txn (key-encode key) (val-encode val) (putflags flags))))
 
 
-(defn dbi-delete
+#_ (defn dbi-delete
   ([^Dbi dbi key val] (.delete dbi (key-encode key)))
   ([^Dbi dbi ^Txn txn key val] (.delete dbi txn (key-encode key))))
 
 ;; start and end are inclusive
 ;; step zero is undefined (but treated like positive for now)
+
+;; SEM new requirement.  All keys must be encoded before calling!
 (defn ^KeyRange key-range [start end step]
-  (let [start (when start (key-encode start))
-        end (when end (key-encode end))]
     (if (neg? step)
       (cond (and (nil? start) (nil? end)) (KeyRange/allBackward)
             (nil? start) (KeyRange/atMostBackward end)
@@ -183,13 +195,20 @@
       (cond (and (nil? start) (nil? end))  (KeyRange/all)
             (nil? start)  (KeyRange/atMost end)
             (nil? end) (KeyRange/atLeast start)
-            :else (KeyRange/closed start end)))))
+            :else (KeyRange/closed start end))))
 
 (defn abs ^long [^long n]
   (if (neg? n) (- n) n))
 
-(defn dbi-reduce-kv  [^Dbi dbi ^Txn txn f3 init start end step]
-  (let [^CursorIterator iter (.iterate dbi txn (key-range start end step))
+
+;; bucket-reduce* really just takes a PEncoder as first arg, usually a bucket, but not
+;; necessarily
+
+(defn bucket-reduce-kv  [bucket ^Txn txn f3 init start end step]
+  (let [^Dbi dbi (-dbi bucket)
+        ^CursorIterator iter (.iterate dbi txn (key-range (-encode-key bucket start)
+                                                          (-encode-key bucket end)
+                                                          step))
         skip (long (dec (abs step)))]
     (loop [res init sk 0]
       (if (.hasNext iter)
@@ -197,16 +216,19 @@
           ;; always call .next to advance iter
           (if (pos? sk)
             (recur res (dec sk))
-            (let [k (key-decode ^bytes (.key kv))
-                  v (val-decode ^bytes (.val kv))
+            (let [k (-decode-key bucket ^bytes (.key kv))
+                  v (-decode-val bucket ^bytes (.val kv))
                   res (f3 res k v)]
               (if (reduced? res)
                 @res
                 (recur res skip)))))
         res))))
 
-(defn dbi-reduce [^Dbi dbi ^Txn txn f init start end step]
-  (let [^CursorIterator iter (.iterate dbi txn (key-range start end step))
+(defn bucket-reduce [bucket ^Txn txn f init start end step]
+  (let [^Dbi dbi (-dbi bucket)
+        ^CursorIterator iter (.iterate dbi txn (key-range (-encode-key bucket start)
+                                                          (-encode-key bucket end)
+                                                          step))
         skip (long (dec (abs step)))]
     (loop [res init sk 0]
       (if (.hasNext iter)
@@ -214,16 +236,19 @@
           ;; always call .next to advance iter
           (if (pos? sk)
             (recur res (dec sk))
-            (let [k (key-decode ^bytes (.key kv))
-                  v (val-decode ^bytes (.val kv))
+            (let [k (-decode-key bucket ^bytes (.key kv))
+                  v (-decode-val bucket ^bytes (.val kv))
                   res (f res (MapEntry/create k v))]
               (if (reduced? res)
                 @res
                 (recur res skip)))))
         (f res)))))
 
-(defn dbi-reduce-keys [^Dbi dbi ^Txn txn f init start end step]
-  (let [^CursorIterator iter (.iterate dbi txn (key-range start end step))
+(defn bucket-reduce-keys [bucket ^Txn txn f init start end step]
+  (let [^Dbi dbi (-dbi bucket)
+        ^CursorIterator iter (.iterate dbi txn (key-range (-encode-key bucket start)
+                                                          (-encode-key bucket end)
+                                                          step))
         skip (long (dec (abs step)))]
     (loop [res init sk 0]
       (if (.hasNext iter)
@@ -231,7 +256,7 @@
           ;; always call .next to advance iter
           (if (pos? sk)
             (recur res (dec sk))
-            (let [k (key-decode ^bytes (.key kv))
+            (let [k (-decode-key bucket ^bytes (.key kv))
                   res (f res k)]
               (if (reduced? res)
                 @res
@@ -239,8 +264,10 @@
         res))))
 
 
+;; SEM: These macros should be ^:private
+
 ;; may only be used within Bucket functions, assumes access to Bucket fields
-(defmacro ^:private with-txn [txn & body]
+(defmacro  with-txn [txn & body]
   `(if-let [~txn (-txn ~'database)]
      (do ~@body)
      (let [~txn ^Txn (-rotxn ~'database)]
@@ -249,19 +276,26 @@
             (finally (.reset ~txn))))))
 
 
-(defmacro ^:private with-txn-cursor [txn cursor & body]
+;; https://dev.clojure.org/jira/browse/CLJ-1708
+;; problem with set! on mutable field when compiled into thunk (for non-terminal try)
+
+(defmacro  with-txn-cursor [txn cursor & body]
   `(if-let [~txn (-txn ~'database)]
-     (let [~cursor (.openCursor ~'dbi ~txn)]
+     (let [~cursor (.openCursor ^Dbi (-dbi ~'encoder) ~txn)]
        (try ~@body
             (finally (.close ~cursor))))
      (let [~txn ^Txn (-rotxn ~'database)]
        (try (.renew ~txn)
-            (if ~'ro-cursor
-              (.renew ~'ro-cursor ~txn)
-              (set! ~'ro-cursor (.openCursor ~'dbi ~txn)))
-            (let [~cursor ~'ro-cursor]
+            (let [~cursor (if ~'ro-cursor
+                            (doto ~'ro-cursor (.renew ~txn))
+                            (-set-ro-cursor! ~'this (.openCursor ^Dbi (-dbi ~'encoder) ~txn)))]
               ~@body)
             (finally (.reset ~txn))))))
+
+(defmacro  with-cursor [cursor & body]
+  `(with-txn-cursor txn# ~cursor ~@body))
+
+
 
 ;; pr-compare needs to agree with order implied by LMDB lexigraphical order of results of
 ;; key-encode, which uses pr-str
@@ -278,14 +312,34 @@
 ;; SEM FIXME: might be leaking a ro-cursor
 ;; never close the dbi, because LMDB does it that way
 
-(deftype Bucket [database ^Dbi dbi ^:volatile-mutable ^Cursor ro-cursor]
+;; SEM Refactoring:  encoder is really PBucketAccess
+
+;; Be careful about changing field names, some macros literally depend on them.
+(deftype Bucket [database encoder ^:unsynchronized-mutable ^Cursor ro-cursor]
+
+  PSetROCursor
+  ;;  https://dev.clojure.org/jira/browse/CLJ-1023  work-around
+  (-set-ro-cursor! [this cursor] (set! ro-cursor cursor))
+  
+  PBucketAccess
+  (-dbi [this] (-dbi encoder))
+  (-encode-key [this key] (-encode-key encoder key))
+  (-decode-key [this raw] (-decode-key encoder raw))
+  (-encode-val [this value] (-encode-val encoder val))
+  (-decode-val [this raw] (-decode-val encoder raw))
+  
   clojure.lang.ILookup
-  (valAt [this key] (with-txn txn (dbi-fetch dbi txn key)))
+  (valAt [this key]
+    (let [kcode (-encode-key encoder key)]
+      (-decode-val encoder (with-txn txn (.get ^Dbi (-dbi encoder) txn kcode)))))
+
   (valAt [this key not-found]
-    (with-txn-cursor txn cursor
-                        (if (cursor-has-key? cursor key)
-                          (val-decode ^bytes (.val ^Cursor cursor))
-                          not-found)))
+    (let [kcode (-encode-key encoder key)]
+      (if-let [raw (with-cursor cursor 
+                     (when (cursor-has-kcode? cursor kcode)
+                       (.val ^Cursor cursor)))]
+        (-decode-val encoder ^bytes raw)
+        not-found)))
 
   ;; No, it should not be Associative -- that implies IPersistentCollection and we are not
   ;; Persistent.  We would have to use separate transactions to allow the old to persist
@@ -294,13 +348,17 @@
   (assoc [this key val]
     (io!)
     (if-let [tx (-txn database)]
-      (dbi-store dbi tx key val)
-      (dbi-store dbi key val))
+      (.put ^Dbi (-dbi encoder) ^Txn tx (-encode-key encoder key) (-encode-val encoder val)
+            (putflags []))
+      (.put ^Dbi (-dbi encoder) (-encode-key encoder key) (-encode-val encoder val)))
     this)
 
   (conj [this map-entry]
     (.assoc this (key map-entry) (val map-entry)))
 
+
+  ;; SEM: FUTURE ISSUE -- uses pr-compare but we might specialize buckets later.
+  ;; 
   ;; SEM: Issue -- this is expensive O(n), which is not the contract of persistent!
   ;; Also, the bucket is still usable after this call to persistent! since it makes a new
   ;; sorted-map.
@@ -316,57 +374,57 @@
   (without [this key]
     (io!)
     (if-let [tx (-txn database)]
-      (dbi-delete dbi tx key val)
-      (dbi-delete dbi key val))
+      (.delete ^Dbi (-dbi encoder) ^Txn tx (-encode-key encoder key))
+      (.delete ^Dbi (-dbi encoder) (-encode-key encoder key)))
     this)
 
   (count [this]
-    (with-txn txn (dbi-count dbi txn)))
+    (with-txn txn  (.entries ^Stat (.stat ^Dbi (-dbi encoder) txn))))
 
   clojure.lang.Seqable
   (seq [this]
-    (with-txn txn (dbi-reduce dbi txn conj () nil nil -1)))
+    (with-txn txn (bucket-reduce this txn conj () nil nil -1)))
 
   clojure.lang.IReduce
   (reduce [this f]
-    (with-txn txn (dbi-reduce dbi txn f (f) nil nil 1)))
+    (with-txn txn (bucket-reduce this txn f (f) nil nil 1)))
 
   clojure.lang.IReduceInit
   (reduce [this f init]
-    (with-txn txn (dbi-reduce dbi txn f init nil nil 1)))
+    (with-txn txn (bucket-reduce this txn f init nil nil 1)))
 
   clojure.lang.IKVReduce
   (kvreduce [this f3 init]
-    (with-txn txn (dbi-reduce-kv dbi txn f3 init nil nil 1)))
+    (with-txn txn (bucket-reduce-kv this txn f3 init nil nil 1)))
 
   ;; SEM -- note Clojure ascending is opposite sense of lambdo reverse?
   clojure.lang.Sorted
   (comparator [this] pr-compare)
   (entryKey [this entry] (key entry))
-  (seq [this ascending] (with-txn txn (dbi-reduce dbi txn conj () nil nil (if ascending -1 1))))
+  (seq [this ascending] (with-txn txn (bucket-reduce this txn conj () nil nil (if ascending -1 1))))
   (seqFrom [this key ascending]
     (with-txn txn
       (if ascending
-        (dbi-reduce dbi txn conj () nil key -1)
-        (dbi-reduce dbi txn conj () key nil 1))))    
+        (bucket-reduce this txn conj () nil key -1)
+        (bucket-reduce this txn conj () key nil 1)))) 
 
   PKeyed
   (-key? [this key]
-    (with-txn-cursor txn cursor
-                               (cursor-has-key? cursor key)))
+    (let [kcode (-encode-key encoder key)]
+      (with-cursor cursor
+        (cursor-has-kcode? cursor kcode))))
+  
   PKeyNavigation
   (-first-key [this]
-    (with-txn-cursor txn cursor
-                               (cursor-first-key cursor)))
+    (-decode-key encoder (with-cursor cursor (cursor-first-kcode cursor))))
   (-last-key [this]
-    (with-txn-cursor txn cursor
-                               (cursor-last-key cursor)))
+    (-decode-key encoder (with-cursor cursor (cursor-last-kcode cursor))))
   (-next-key [this key]
-    (with-txn-cursor txn cursor
-                               (cursor-next-key cursor key)))
+    (let [kcode (-encode-key encoder key)]
+      (-decode-key encoder (with-cursor cursor (cursor-next-kcode cursor kcode)))))
   (-previous-key [this key]
-    (with-txn-cursor txn cursor
-                               (cursor-previous-key cursor key)))
+    (let [kcode (-encode-key encoder key)]
+      (-decode-key encoder (with-cursor cursor (cursor-previous-kcode cursor kcode)))))
   
   PReducibleBucket
   (-reducible [this keys-only? start end step]
@@ -374,31 +432,32 @@
       (reify
         clojure.lang.Seqable
         (seq [this]
-          (with-txn txn (dbi-reduce-keys dbi txn conj () end start (- step))))
+          (seq (with-txn txn (bucket-reduce-keys encoder txn conj [] start end step))))
 
         clojure.lang.IReduceInit
         (reduce [this f init]
-          (with-txn txn (dbi-reduce-keys dbi txn f init start end step))))
+          (with-txn txn (bucket-reduce-keys encoder txn f init start end step))))
 
       (reify
         clojure.lang.Seqable
         (seq [this]
-          (with-txn txn (dbi-reduce dbi txn conj () end start (- step))))
+          (seq (with-txn txn (bucket-reduce encoder txn conj [] start end step))))
 
         clojure.lang.IReduceInit
         (reduce [this f init]
-          (with-txn txn (dbi-reduce dbi txn f init start end step)))
+          (with-txn txn (bucket-reduce encoder txn f init start end step)))
 
         clojure.lang.IKVReduce
         (kvreduce [this f3 init]
-          (with-txn txn (dbi-reduce-kv dbi txn f3 init start end step))))))
+          (with-txn txn (bucket-reduce-kv encoder txn f3 init start end step))))))
   
   PAppendableBucket
   ;; bucket must fresh and sequential writes must be in key order
   (-append! [this key val]
     (io!)
     (if-let [tx (-txn database)]
-      (dbi-store dbi tx key val [PutFlags/MDB_APPEND])
+      (.put ^Dbi (-dbi encoder) ^Txn tx (-encode-key encoder key) (-encode-val encoder val)
+            (putflags [PutFlags/MDB_APPEND]))
       (throw (ex-info "Must be in transaction to append!"
                       {:bucket this
                        :key key
@@ -407,6 +466,15 @@
 
   )
 
+
+(deftype GenericAccess [^Dbi dbi]
+  PBucketAccess
+  (-dbi ^Dbi [this] dbi)
+  (-encode-key [this key] (pr-encode key))
+  (-decode-key [this barr] (pr-decode barr))
+  (-encode-val [this val] (nip-encode val))
+  (-decode-val [this barr] (nip-decode barr)))
+    
 
   
 (deftype Database [dirpath
@@ -420,8 +488,8 @@
 
   (-open-bucket! [this bkey flags]
     (io!)
-    (let [dbi (.openDbi env (key-encode bkey) (dbiflags flags))]
-      (->Bucket this dbi nil)))
+    (let [dbi (.openDbi env (pr-encode bkey) (dbiflags flags))]
+      (->Bucket this (GenericAccess. dbi) nil)))
 
   (-begin! [this flags]
     (io!)
@@ -445,7 +513,7 @@
     this)
 
   (-bucket-keys [this]
-    (map key-decode (.getDbiNames env)))
+    (map pr-decode (.getDbiNames env)))
 
 
   java.io.Closeable

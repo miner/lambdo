@@ -159,6 +159,29 @@
         (is (= fk :a))
         (is (= lk :d))))))
 
+
+(deftest reducible-steps
+  (testing "Reducibles and steps"
+    (let [pathname (make-tmpdir (str "TEST_REDSTEPS_" (System/currentTimeMillis)))
+          database (create-database! pathname)
+          bbb (create-bucket! database :bbb {:a 1 :b 2 :c 3 :d 4 :e 5 :f 6 :g 7})]
+      (is (= (seq (reducible bbb :start :a :end :e :keys-only? true))
+             '(:a :b :c :d :e)))
+      (is (= (seq (reducible bbb :start :a :end :e :keys-only? true :step 2)) 
+             '(:a :c :e)))
+      (is (= (seq (reducible bbb :start nil :step -3 :keys-only? true))
+             '(:g :d :a)))
+      (is (= (seq (reducible bbb :start :b :step 2 :keys-only? true))
+             '(:b :d :f)))
+      (is (= (seq (reducible bbb :start :f :step -3 :keys-only? true))
+             '(:f :c)))
+      (is (= (seq (reducible bbb :start :f :end :d :step -2))
+             '([:f 6] [:d 4])))
+      (is (= (seq (reducible bbb :start :a :end :f :step 2))
+             '([:a 1] [:c 3] [:e 5])))
+      (close-database! database)
+      )))
+
 (defn kwpad [n]
   (let [ktemp "k0000000000"
         klen (.length ktemp)
