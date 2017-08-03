@@ -123,6 +123,7 @@
     (let [pathname (make-tmpdir (str "TEST_REDSTEPS_" (System/currentTimeMillis)))
           database (create-database! pathname)
           bbb (create-bucket! database :bbb {:a 1 :b 2 :c 3 :d 4 :e 5 :f 6 :g 7})]
+      (println "reducibles-test path:" (str pathname))
       (is (= (seq (reducible bbb :start :a :end :e :keys-only? true))
              '(:a :b :c :d :e)))
       (is (= (seq (reducible bbb :start :a :end :e :keys-only? true :step 2)) 
