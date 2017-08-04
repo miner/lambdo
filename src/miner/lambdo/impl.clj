@@ -4,9 +4,10 @@
             [miner.lambdo.protocols :refer :all]
             [taoensso.nippy :as nip])
   (:import (java.nio.charset StandardCharsets)
+           (java.nio ByteBuffer)
            (clojure.lang MapEntry)
            (org.lmdbjava Env EnvFlags Dbi DbiFlags Txn TxnFlags PutFlags Stat GetOp
-                         ByteArrayProxy Env$Builder
+                         ByteBufferProxy ByteArrayProxy Env$Builder
                          KeyRange
                          Cursor CursorIterator CursorIterator$KeyVal) ))
 
@@ -16,7 +17,17 @@
 ;; SEM: use Edn encoding for keys so that we maintain LMDB lexigraphical order
 
 ;; Fressian was too hard to use, but maybe worth reconsidering.
-  
+
+
+;; For now, we want to be able to use either proxy.  Long term, we should choose just one
+;; and hard-wire it.  Timing is currently about the same for my tests.  Theoretically,
+;; PROXY_OPTIMAL should be faster, but maybe my encoding with nippy is slowing us down.
+;; Note, we adjust to the proxy in the function lmdb-access
+
+(def lmdb-proxy ByteBufferProxy/PROXY_OPTIMAL)
+;; ByteBufferProxy/PROXY_OPTIMAL
+;; ByteArrayProxy/PROXY_BA
+
 ;; for debugging
 (defn sysid [x]
   (format "%s-%H" (.getSimpleName ^Class (class x)) (System/identityHashCode x) ))
@@ -32,13 +43,11 @@
 (defn putflags ^"[Lorg.lmdbjava.PutFlags;" [flags]
   (into-array PutFlags flags))
 
-
-
 (defn create-env
   (^Env [path] (create-env path 10))
   (^Env [path size-mb] (create-env path size-mb nil))
   (^Env [path size-mb flags]
-   (let [^Env$Builder builder (-> (Env/create ByteArrayProxy/PROXY_BA)
+   (let [^Env$Builder builder (-> (Env/create lmdb-proxy)
                                   (.setMapSize (* size-mb 1024 1024))
                                   (.setMaxDbs 16))]
      ^Env (.open builder (io/file path) (into-array EnvFlags flags)))))
@@ -93,6 +102,9 @@
   (when barr
     (String. barr StandardCharsets/UTF_8)))
 
+
+
+
 (defn pr-encode ^bytes [val]
   (when val
     (.getBytes (pr-str val) StandardCharsets/UTF_8)))
@@ -101,14 +113,45 @@
   (when barr
     (edn/read-string (String. barr StandardCharsets/UTF_8))))
 
-
-
 (defn nip-encode ^bytes [val]
   (nip/fast-freeze val))
 
 (defn nip-decode [barr]
   (when barr
     (nip/fast-thaw ^bytes barr)))
+
+
+
+
+(defn pr-encode-byte-buffer ^ByteBuffer [val]
+  (when val
+    (let [raw ^bytes (.getBytes (pr-str val) StandardCharsets/UTF_8)
+          ^ByteBuffer bb (ByteBuffer/allocateDirect (int (alength raw)))]
+      (.flip (.put bb raw)))))
+
+(defn pr-decode-byte-buffer [^ByteBuffer byte-buf]
+  (when byte-buf
+    (let [len (.limit byte-buf)
+          barr (byte-array len)]
+      (.rewind byte-buf)
+      (.get byte-buf barr)
+      (edn/read-string (String. barr StandardCharsets/UTF_8)))))
+
+(defn nippy-encode-byte-buffer ^ByteBuffer [val]
+  (when val
+    (let [raw ^bytes (nip/fast-freeze val)
+          ^ByteBuffer bb (ByteBuffer/allocateDirect (int (alength raw)))]
+      (.flip (.put bb raw)))))
+
+(defn nippy-decode-byte-buffer [^ByteBuffer byte-buf]
+  (when byte-buf
+    (let [len (.limit byte-buf)
+          barr (byte-array len)]
+      (.rewind byte-buf)
+      (.get byte-buf barr)
+      (nip/fast-thaw barr))))
+
+
 
 
 ;; SEM: FIXME.  There must be a better way.  Maybe lower level.  But for now, we need
@@ -433,7 +476,7 @@
   )
 
 
-(deftype GenericAccess [^Dbi dbi]
+(deftype ByteArrayAccess [^Dbi dbi]
   PBucketAccess
   (-dbi ^Dbi [this] dbi)
   (-encode-key [this key] (pr-encode key))
@@ -441,6 +484,22 @@
   (-encode-val [this val] (nip-encode val))
   (-decode-val [this barr] (nip-decode barr)))
     
+
+(deftype ByteBufferAccess [^Dbi dbi]
+  PBucketAccess
+  (-dbi ^Dbi [this] dbi)
+  (-encode-key [this key] (pr-encode-byte-buffer key))
+  (-decode-key [this barr] (pr-decode-byte-buffer barr))
+  (-encode-val [this val] (nippy-encode-byte-buffer val))
+  (-decode-val [this barr] (nippy-decode-byte-buffer barr)))
+    
+
+;; hack to allow experimentation -- eventually, pick one and run with it.
+(defn lmdb-access [dbi]
+  (condp = lmdb-proxy
+    ByteBufferProxy/PROXY_OPTIMAL (->ByteBufferAccess dbi)
+    ByteArrayProxy/PROXY_BA (->ByteArrayAccess dbi)))
+
 
   
 (deftype Database [dirpath
@@ -455,7 +514,7 @@
   (-open-bucket! [this bkey flags]
     (io!)
     (let [dbi (.openDbi env (pr-encode bkey) (dbiflags flags))]
-      (->Bucket this (GenericAccess. dbi) nil)))
+      (->Bucket this (lmdb-access dbi) nil)))
 
   (-begin! [this flags]
     (io!)
