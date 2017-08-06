@@ -229,7 +229,7 @@
            (finally (.reset txn))))))
 
 (defmacro with-cursor [bucket cursor & body]
-  `(with-bucket-cursor* ~bucket (fn [^Cursor ~cursor] ~@body)))
+  `(with-bucket-cursor* ~bucket (fn [~cursor] ~@body)))
 
 
 (defn  with-bucket-txn* [bucket txn-fn]
@@ -250,8 +250,8 @@
   (with-txn bucket txn
     (let [^Dbi dbi (-dbi bucket)
           ^CursorIterator iter (.iterate dbi ^Txn txn (key-range (-encode-key bucket start)
-                                                            (-encode-key bucket end)
-                                                            step))
+                                                                 (-encode-key bucket end)
+                                                                 step))
           skip (long (dec (abs step)))]
       (loop [res init sk 0]
         (if (.hasNext iter)
@@ -271,8 +271,8 @@
   (with-txn bucket txn
     (let [^Dbi dbi (-dbi bucket)
           ^CursorIterator iter (.iterate dbi ^Txn txn (key-range (-encode-key bucket start)
-                                                            (-encode-key bucket end)
-                                                            step))
+                                                                 (-encode-key bucket end)
+                                                                 step))
           skip (long (dec (abs step)))]
       (loop [res init sk 0]
         (if (.hasNext iter)
@@ -292,8 +292,8 @@
   (with-txn bucket txn
     (let [^Dbi dbi (-dbi bucket)
           ^CursorIterator iter (.iterate dbi ^Txn txn (key-range (-encode-key bucket start)
-                                                            (-encode-key bucket end)
-                                                            step))
+                                                                 (-encode-key bucket end)
+                                                                 step))
           skip (long (dec (abs step)))]
       (loop [res init sk 0]
         (if (.hasNext iter)

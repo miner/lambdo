@@ -97,7 +97,7 @@
 ;; really.
 
 (defn reducible [bucket & {:keys [keys-only? start end step]}]
-  (let [step (if (or (nil? step) (zero? step)) 1 step)]
+  (let [step (case step (nil 0) 1 step)]
     (-reducible bucket keys-only? start end step)))
 
 ;; same idea as contains? but implemented with a PKeyed protocol, using my perferred name
