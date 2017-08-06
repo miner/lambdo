@@ -211,104 +211,10 @@
   (if (neg? n) (- n) n))
 
 
-;; bucket-reduce* really just takes a PBucketAccess as first arg, usually a bucket, but not
-;; necessarily
-
-(defn bucket-reduce-kv  [bucket ^Txn txn f3 init start end step]
-  (let [^Dbi dbi (-dbi bucket)
-        ^CursorIterator iter (.iterate dbi txn (key-range (-encode-key bucket start)
-                                                          (-encode-key bucket end)
-                                                          step))
-        skip (long (dec (abs step)))]
-    (loop [res init sk 0]
-      (if (.hasNext iter)
-        (let [^CursorIterator$KeyVal kv (.next iter)]
-          ;; always call .next to advance iter
-          (if (pos? sk)
-            (recur res (dec sk))
-            (let [k (-decode-key bucket ^bytes (.key kv))
-                  v (-decode-val bucket ^bytes (.val kv))
-                  res (f3 res k v)]
-              (if (reduced? res)
-                @res
-                (recur res skip)))))
-        res))))
-
-(defn bucket-reduce [bucket ^Txn txn f init start end step]
-  (let [^Dbi dbi (-dbi bucket)
-        ^CursorIterator iter (.iterate dbi txn (key-range (-encode-key bucket start)
-                                                          (-encode-key bucket end)
-                                                          step))
-        skip (long (dec (abs step)))]
-    (loop [res init sk 0]
-      (if (.hasNext iter)
-        (let [^CursorIterator$KeyVal kv (.next iter)]
-          ;; always call .next to advance iter
-          (if (pos? sk)
-            (recur res (dec sk))
-            (let [k (-decode-key bucket ^bytes (.key kv))
-                  v (-decode-val bucket ^bytes (.val kv))
-                  res (f res (MapEntry/create k v))]
-              (if (reduced? res)
-                @res
-                (recur res skip)))))
-        (f res)))))
-
-(defn bucket-reduce-keys [bucket ^Txn txn f init start end step]
-  (let [^Dbi dbi (-dbi bucket)
-        ^CursorIterator iter (.iterate dbi txn (key-range (-encode-key bucket start)
-                                                          (-encode-key bucket end)
-                                                          step))
-        skip (long (dec (abs step)))]
-    (loop [res init sk 0]
-      (if (.hasNext iter)
-        (let [^CursorIterator$KeyVal kv (.next iter)]
-          ;; always call .next to advance iter
-          (if (pos? sk)
-            (recur res (dec sk))
-            (let [k (-decode-key bucket ^bytes (.key kv))
-                  res (f res k)]
-              (if (reduced? res)
-                @res
-                (recur res skip)))))
-        res))))
-
-
-;; SEM: These macros should be ^:private
-
-;; may only be used within Bucket functions, assumes access to Bucket fields
-
-(defmacro  with-txn [txn & body]
-  `(if-let [~txn (-txn ~'database)]
-     (do ~@body)
-     (let [~txn ^Txn (-rotxn ~'database)]
-       (try (.renew ~txn)
-            ~@body
-            (finally (.reset ~txn))))))
-
 
 ;; https://dev.clojure.org/jira/browse/CLJ-1708
 ;; problem with set! on mutable field when compiled into thunk (for non-terminal try)
 
-
-(defmacro  with-txn-cursor [txn cursor & body]
-  `(if-let [~txn (-txn ~'database)]
-     (let [~cursor (.openCursor ^Dbi (-dbi ~'encoder) ~txn)]
-       (try ~@body
-            (finally (.close ~cursor))))
-     (let [~txn ^Txn (-rotxn ~'database)]
-       (try (.renew ~txn)
-            (let [~cursor (if ~'ro-cursor
-                            (doto ~'ro-cursor (.renew ~txn))
-                            (-set-ro-cursor! ~'this (.openCursor ^Dbi (-dbi ~'encoder) ~txn)))]
-              ~@body)
-            (finally (.reset ~txn))))))
-
-
-(defmacro  with-cursor [cursor & body]
-  `(with-txn-cursor txn# ~cursor ~@body))
-
-#_
 (defn with-bucket-cursor* [bucket cursor-fn]
   (if-let [txn (-txn (-database bucket))]
     (let [cursor (.openCursor ^Dbi (-dbi bucket) txn)]
@@ -316,16 +222,16 @@
            (finally (.close cursor))))
     (let [txn ^Txn (-rotxn (-database bucket))]
       (try (.renew txn)
-           (let [cursor (if-let [ro (-ro-cursor bucket)]
+           (let [cursor (if-let [ro ^Cursor (-ro-cursor bucket)]
                           (doto ro (.renew txn))
                           (-set-ro-cursor! bucket (.openCursor ^Dbi (-dbi bucket) txn)))]
              (cursor-fn cursor))
            (finally (.reset txn))))))
-#_
-(defmacro with-cursor [bucket cursor & body]
-  `(with-bucket-cursor* ~bucket (fn [~cursor] ~@body)))
 
-#_
+(defmacro with-cursor [bucket cursor & body]
+  `(with-bucket-cursor* ~bucket (fn [^Cursor ~cursor] ~@body)))
+
+
 (defn  with-bucket-txn* [bucket txn-fn]
   (if-let [txn (-txn (-database bucket))]
     (txn-fn txn)
@@ -334,9 +240,75 @@
             (txn-fn txn)
             (finally (.reset txn))))))
 
-#_
+
 (defmacro with-txn [bucket txn & body]
-  `(with-bucket-txn ~bucket (fn [~txn] ~@body)))
+  `(with-bucket-txn* ~bucket (fn [~txn] ~@body)))
+
+;; bucket-reduce* now requires a real bucket, not just PBucketAccess
+
+(defn bucket-reduce-kv [bucket f3 init start end step]
+  (with-txn bucket txn
+    (let [^Dbi dbi (-dbi bucket)
+          ^CursorIterator iter (.iterate dbi ^Txn txn (key-range (-encode-key bucket start)
+                                                            (-encode-key bucket end)
+                                                            step))
+          skip (long (dec (abs step)))]
+      (loop [res init sk 0]
+        (if (.hasNext iter)
+          (let [^CursorIterator$KeyVal kv (.next iter)]
+            ;; always call .next to advance iter
+            (if (pos? sk)
+              (recur res (dec sk))
+              (let [k (-decode-key bucket ^bytes (.key kv))
+                    v (-decode-val bucket ^bytes (.val kv))
+                    res (f3 res k v)]
+                (if (reduced? res)
+                  @res
+                  (recur res skip)))))
+          res)))))
+
+(defn bucket-reduce [bucket f init start end step]
+  (with-txn bucket txn
+    (let [^Dbi dbi (-dbi bucket)
+          ^CursorIterator iter (.iterate dbi ^Txn txn (key-range (-encode-key bucket start)
+                                                            (-encode-key bucket end)
+                                                            step))
+          skip (long (dec (abs step)))]
+      (loop [res init sk 0]
+        (if (.hasNext iter)
+          (let [^CursorIterator$KeyVal kv (.next iter)]
+            ;; always call .next to advance iter
+            (if (pos? sk)
+              (recur res (dec sk))
+              (let [k (-decode-key bucket ^bytes (.key kv))
+                    v (-decode-val bucket ^bytes (.val kv))
+                    res (f res (MapEntry/create k v))]
+                (if (reduced? res)
+                  @res
+                  (recur res skip)))))
+          (f res))))))
+
+(defn bucket-reduce-keys [bucket f init start end step]
+  (with-txn bucket txn
+    (let [^Dbi dbi (-dbi bucket)
+          ^CursorIterator iter (.iterate dbi ^Txn txn (key-range (-encode-key bucket start)
+                                                            (-encode-key bucket end)
+                                                            step))
+          skip (long (dec (abs step)))]
+      (loop [res init sk 0]
+        (if (.hasNext iter)
+          (let [^CursorIterator$KeyVal kv (.next iter)]
+            ;; always call .next to advance iter
+            (if (pos? sk)
+              (recur res (dec sk))
+              (let [k (-decode-key bucket ^bytes (.key kv))
+                    res (f res k)]
+                (if (reduced? res)
+                  @res
+                  (recur res skip)))))
+          res)))))
+
+
 
 
 ;; pr-compare needs to agree with order implied by LMDB lexigraphical order of results of
@@ -374,11 +346,11 @@
   clojure.lang.ILookup
   (valAt [this key]
     (let [kcode (-encode-key encoder key)]
-      (-decode-val encoder (with-txn txn (.get ^Dbi (-dbi encoder) txn kcode)))))
+      (-decode-val encoder (with-txn this txn (.get ^Dbi (-dbi encoder) txn kcode)))))
 
   (valAt [this key not-found]
     (let [kcode (-encode-key encoder key)]
-      (if-let [raw (with-cursor cursor 
+      (if-let [raw (with-cursor this cursor 
                      (when (cursor-has-kcode? cursor kcode)
                        (.val ^Cursor cursor)))]
         (-decode-val encoder ^bytes raw)
@@ -424,77 +396,76 @@
     this)
 
   (count [this]
-    (with-txn txn  (.entries ^Stat (.stat ^Dbi (-dbi encoder) txn))))
+    (with-txn this txn  (.entries ^Stat (.stat ^Dbi (-dbi encoder) txn))))
 
   clojure.lang.Seqable
   (seq [this]
-    (with-txn txn (bucket-reduce this txn conj () nil nil -1)))
+    (bucket-reduce this conj () nil nil -1))
 
   clojure.lang.IReduce
   (reduce [this f]
-    (with-txn txn (bucket-reduce this txn f (f) nil nil 1)))
+    (bucket-reduce this f (f) nil nil 1))
 
   clojure.lang.IReduceInit
   (reduce [this f init]
-    (with-txn txn (bucket-reduce this txn f init nil nil 1)))
+    (bucket-reduce this f init nil nil 1))
 
   clojure.lang.IKVReduce
   (kvreduce [this f3 init]
-    (with-txn txn (bucket-reduce-kv this txn f3 init nil nil 1)))
+    (bucket-reduce-kv this f3 init nil nil 1))
 
   ;; SEM -- note Clojure ascending is opposite sense of lambdo reverse?
   clojure.lang.Sorted
   (comparator [this] pr-compare)
   (entryKey [this entry] (key entry))
-  (seq [this ascending] (with-txn txn (bucket-reduce this txn conj () nil nil (if ascending -1 1))))
+  (seq [this ascending] (bucket-reduce this conj () nil nil (if ascending -1 1)))
   (seqFrom [this key ascending]
-    (with-txn txn
-      (if ascending
-        (bucket-reduce this txn conj () nil key -1)
-        (bucket-reduce this txn conj () key nil 1)))) 
+    (if ascending
+      (bucket-reduce this conj () nil key -1)
+      (bucket-reduce this conj () key nil 1)))
 
   PKeyed
   (-key? [this key]
     (let [kcode (-encode-key encoder key)]
-      (with-cursor cursor
+      (with-cursor this cursor
         (cursor-has-kcode? cursor kcode))))
   
   PKeyNavigation
   (-first-key [this]
-    (-decode-key encoder (with-cursor cursor (cursor-first-kcode cursor))))
+    (-decode-key encoder (with-cursor this cursor (cursor-first-kcode cursor))))
   (-last-key [this]
-    (-decode-key encoder (with-cursor cursor (cursor-last-kcode cursor))))
+    (-decode-key encoder (with-cursor this cursor (cursor-last-kcode cursor))))
   (-next-key [this key]
     (let [kcode (-encode-key encoder key)]
-      (-decode-key encoder (with-cursor cursor (cursor-next-kcode cursor kcode)))))
+      (-decode-key encoder (with-cursor this cursor (cursor-next-kcode cursor kcode)))))
   (-previous-key [this key]
     (let [kcode (-encode-key encoder key)]
-      (-decode-key encoder (with-cursor cursor (cursor-previous-kcode cursor kcode)))))
+      (-decode-key encoder (with-cursor this cursor (cursor-previous-kcode cursor kcode)))))
   
   PReducibleBucket
   (-reducible [this keys-only? start end step]
     (if keys-only?
       (reify
         clojure.lang.Seqable
-        (seq [this]
-          (seq (with-txn txn (bucket-reduce-keys encoder txn conj [] start end step))))
+        (seq [_]
+          (seq (bucket-reduce-keys this conj [] start end step)))
 
         clojure.lang.IReduceInit
-        (reduce [this f init]
-          (with-txn txn (bucket-reduce-keys encoder txn f init start end step))))
+        (reduce [_ f init]
+          (bucket-reduce-keys this f init start end step)))
 
       (reify
         clojure.lang.Seqable
-        (seq [this]
-          (seq (with-txn txn (bucket-reduce encoder txn conj [] start end step))))
+        (seq [_]
+          (seq (bucket-reduce this conj [] start end step)))
 
         clojure.lang.IReduceInit
-        (reduce [this f init]
-          (with-txn txn (bucket-reduce encoder txn f init start end step)))
+        (reduce [_ f init]
+          (bucket-reduce this f init start end step))
 
         clojure.lang.IKVReduce
-        (kvreduce [this f3 init]
-          (with-txn txn (bucket-reduce-kv encoder txn f3 init start end step))))))
+        (kvreduce [_ f3 init]
+          (bucket-reduce-kv this f3 init start end step)))))
   
   PAppendableBucket
   ;; bucket must fresh and sequential writes must be in key order
