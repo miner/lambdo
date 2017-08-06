@@ -25,8 +25,7 @@
 ;; Note, we adjust to the proxy in the function lmdb-access
 
 (def lmdb-proxy ByteBufferProxy/PROXY_OPTIMAL)
-;; ByteBufferProxy/PROXY_OPTIMAL
-;; ByteArrayProxy/PROXY_BA
+#_ (def lmdb-proxy ByteArrayProxy/PROXY_BA)
 
 ;; for debugging
 (defn sysid [x]
@@ -151,6 +150,8 @@
       (.get byte-buf barr)
       (nip/fast-thaw barr))))
 
+;; SEM FIXME -- in theory, Dbi.reserve can give us the ByteBuffer we need and save doing a
+;; copy later, but it needs txn, etc.  so must be done within Bucket
 
 
 
@@ -276,6 +277,7 @@
 ;; SEM: These macros should be ^:private
 
 ;; may only be used within Bucket functions, assumes access to Bucket fields
+
 (defmacro  with-txn [txn & body]
   `(if-let [~txn (-txn ~'database)]
      (do ~@body)
@@ -287,6 +289,7 @@
 
 ;; https://dev.clojure.org/jira/browse/CLJ-1708
 ;; problem with set! on mutable field when compiled into thunk (for non-terminal try)
+
 
 (defmacro  with-txn-cursor [txn cursor & body]
   `(if-let [~txn (-txn ~'database)]
@@ -301,9 +304,39 @@
               ~@body)
             (finally (.reset ~txn))))))
 
+
 (defmacro  with-cursor [cursor & body]
   `(with-txn-cursor txn# ~cursor ~@body))
 
+#_
+(defn with-bucket-cursor* [bucket cursor-fn]
+  (if-let [txn (-txn (-database bucket))]
+    (let [cursor (.openCursor ^Dbi (-dbi bucket) txn)]
+      (try (cursor-fn cursor)
+           (finally (.close cursor))))
+    (let [txn ^Txn (-rotxn (-database bucket))]
+      (try (.renew txn)
+           (let [cursor (if-let [ro (-ro-cursor bucket)]
+                          (doto ro (.renew txn))
+                          (-set-ro-cursor! bucket (.openCursor ^Dbi (-dbi bucket) txn)))]
+             (cursor-fn cursor))
+           (finally (.reset txn))))))
+#_
+(defmacro with-cursor [bucket cursor & body]
+  `(with-bucket-cursor* ~bucket (fn [~cursor] ~@body)))
+
+#_
+(defn  with-bucket-txn* [bucket txn-fn]
+  (if-let [txn (-txn (-database bucket))]
+    (txn-fn txn)
+     (let [txn ^Txn (-rotxn (-database bucket))]
+       (try (.renew txn)
+            (txn-fn txn)
+            (finally (.reset txn))))))
+
+#_
+(defmacro with-txn [bucket txn & body]
+  `(with-bucket-txn ~bucket (fn [~txn] ~@body)))
 
 
 ;; pr-compare needs to agree with order implied by LMDB lexigraphical order of results of
@@ -325,11 +358,12 @@
 
 ;; Be careful about changing field names, some macros literally depend on them.
 (deftype Bucket [database encoder ^:unsynchronized-mutable ^Cursor ro-cursor]
-
-  PSetROCursor
-  ;;  https://dev.clojure.org/jira/browse/CLJ-1023  work-around
-  (-set-ro-cursor! [this cursor] (set! ro-cursor cursor))
   
+  PBucketExtra
+  (-database [this] database)
+  (-set-ro-cursor! [this cursor] (set! ro-cursor cursor))
+  (-ro-cursor [this] ro-cursor)
+
   PBucketAccess
   (-dbi [this] (-dbi encoder))
   (-encode-key [this key] (-encode-key encoder key))
@@ -357,8 +391,10 @@
   (assoc [this key val]
     (io!)
     (if-let [tx (-txn database)]
-      (.put ^Dbi (-dbi encoder) ^Txn tx (-encode-key encoder key) (-encode-val encoder val)
-            (putflags []))
+      (let [kcode (-encode-key encoder key)]
+        (.put ^Dbi (-dbi encoder) ^Txn tx kcode
+              (-reserve-val encoder tx kcode val)
+              (putflags [])))
       (.put ^Dbi (-dbi encoder) (-encode-key encoder key) (-encode-val encoder val)))
     this)
 
@@ -465,8 +501,10 @@
   (-append! [this key val]
     (io!)
     (if-let [tx (-txn database)]
-      (.put ^Dbi (-dbi encoder) ^Txn tx (-encode-key encoder key) (-encode-val encoder val)
-            (putflags [PutFlags/MDB_APPEND]))
+      (let [kcode (-encode-key this key)]
+        (.put ^Dbi (-dbi encoder) ^Txn tx kcode
+              (-reserve-val encoder tx kcode val)
+              (putflags [PutFlags/MDB_APPEND])))
       (throw (ex-info "Must be in transaction to append!"
                       {:bucket this
                        :key key
@@ -482,6 +520,7 @@
   (-encode-key [this key] (pr-encode key))
   (-decode-key [this barr] (pr-decode barr))
   (-encode-val [this val] (nip-encode val))
+  (-reserve-val [this txn kcode val] (nip-encode val))
   (-decode-val [this barr] (nip-decode barr)))
     
 
@@ -489,6 +528,13 @@
   PBucketAccess
   (-dbi ^Dbi [this] dbi)
   (-encode-key [this key] (pr-encode-byte-buffer key))
+
+  (-reserve-val [this txn kcode val]
+    (when val
+      (let [raw ^bytes (nip/fast-freeze val)
+            ^ByteBuffer bb (.reserve dbi txn kcode (alength raw) (putflags []))]
+        (.flip (.put bb raw)))))
+  
   (-decode-key [this barr] (pr-decode-byte-buffer barr))
   (-encode-val [this val] (nippy-encode-byte-buffer val))
   (-decode-val [this barr] (nippy-decode-byte-buffer barr)))
