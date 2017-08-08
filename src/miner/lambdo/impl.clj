@@ -1,7 +1,7 @@
 (ns miner.lambdo.impl
   (:require [clojure.java.io :as io]
             [clojure.edn :as edn]
-            [clojure.data.fressian :as fress]
+            ;; [clojure.data.fressian :as fress]
             [miner.lambdo.protocols :refer :all]
             [taoensso.nippy :as nip])
   (:import (java.nio.charset StandardCharsets)
@@ -130,10 +130,11 @@
     (.flip (.put bb heap-bb)))))
 
 ;; using my snapshot of Fressian with :direct support
+#_
 (defn fressian-encode ^ByteBuffer [val]
   (when val
     (fress/write val :direct? true)))
-
+#_
 (defn fressian-decode [^ByteBuffer byte-buf]
   (when byte-buf
     (fress/read byte-buf)))
@@ -532,6 +533,7 @@
     
 
 
+#_
 (deftype FressianAccess [^Dbi dbi]
   PBucketAccess
   (-dbi ^Dbi [this] dbi)
@@ -549,8 +551,8 @@
 ;; hack to allow experimentation -- eventually, pick one and run with it.
 (defn lmdb-access [dbi]
   (condp = lmdb-proxy
-    ByteBufferProxy/PROXY_OPTIMAL (->FressianAccess dbi)
-    ;; ByteBufferProxy/PROXY_OPTIMAL (->ByteBufferAccess dbi)
+    ByteBufferProxy/PROXY_OPTIMAL (->ByteBufferAccess dbi)
+    ;;  ByteBufferProxy/PROXY_OPTIMAL (->FressianAccess dbi)
     ByteArrayProxy/PROXY_BA (->ByteArrayAccess dbi)))
 
 
