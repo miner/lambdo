@@ -11,6 +11,13 @@
                 (io/make-parents tmp)
                 tmp)))
 
+(deftest print-proxy
+  (testing "Report proxy and buffer types"
+    (println "Proxy" (str (class lmdb-proxy)))
+    (println "Buffer" (str (class (lmdb-access nil))))
+    (println)
+    true))
+
 
 (deftest simple-test
   (testing "Simple API"

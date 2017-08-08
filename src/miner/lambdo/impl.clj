@@ -122,11 +122,17 @@
 
 
 ;; SEM FIXME: Must copy to get into direct BB, for now.
+#_
 (defn fressian-encode ^ByteBuffer [val]
   (when val
   (let [^ByteBuffer heap-bb (fress/write val)
         bb (ByteBuffer/allocateDirect (.capacity heap-bb))]
     (.flip (.put bb heap-bb)))))
+
+;; using my snapshot of Fressian with :direct support
+(defn fressian-encode ^ByteBuffer [val]
+  (when val
+    (fress/write val :direct? true)))
 
 (defn fressian-decode [^ByteBuffer byte-buf]
   (when byte-buf
