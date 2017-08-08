@@ -1,6 +1,7 @@
 (ns miner.lambdo.impl
   (:require [clojure.java.io :as io]
             [clojure.edn :as edn]
+            [clojure.data.fressian :as fress]
             [miner.lambdo.protocols :refer :all]
             [taoensso.nippy :as nip])
   (:import (java.nio.charset StandardCharsets)
@@ -118,6 +119,19 @@
 (defn nip-decode [barr]
   (when barr
     (nip/fast-thaw ^bytes barr)))
+
+
+;; SEM FIXME: Must copy to get into direct BB, for now.
+(defn fressian-encode ^ByteBuffer [val]
+  (when val
+  (let [^ByteBuffer heap-bb (fress/write val)
+        bb (ByteBuffer/allocateDirect (.capacity heap-bb))]
+    (.flip (.put bb heap-bb)))))
+
+(defn fressian-decode [^ByteBuffer byte-buf]
+  (when byte-buf
+    (fress/read byte-buf)))
+
 
 
 
@@ -511,10 +525,26 @@
   (-decode-val [this barr] (nippy-decode-byte-buffer barr)))
     
 
+
+(deftype FressianAccess [^Dbi dbi]
+  PBucketAccess
+  (-dbi ^Dbi [this] dbi)
+  (-encode-key [this key] (pr-encode-byte-buffer key))
+  (-decode-key [this bbuf] (pr-decode-byte-buffer bbuf))
+
+  ;; not really implemented
+  (-reserve-val [this txn kcode val] (fressian-encode val))
+  
+  (-encode-val [this val] (fressian-encode val))
+  (-decode-val [this bbuf] (fressian-decode bbuf)))
+
+
+
 ;; hack to allow experimentation -- eventually, pick one and run with it.
 (defn lmdb-access [dbi]
   (condp = lmdb-proxy
-    ByteBufferProxy/PROXY_OPTIMAL (->ByteBufferAccess dbi)
+    ByteBufferProxy/PROXY_OPTIMAL (->FressianAccess dbi)
+    ;; ByteBufferProxy/PROXY_OPTIMAL (->ByteBufferAccess dbi)
     ByteArrayProxy/PROXY_BA (->ByteArrayAccess dbi)))
 
 
