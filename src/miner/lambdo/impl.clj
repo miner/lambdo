@@ -556,45 +556,48 @@
     ByteArrayProxy/PROXY_BA (->ByteArrayAccess dbi)))
 
 
+
+
+(defn -open-bucket! [db bkey flags]
+  (io!)
+  (let [dbi (.openDbi (-env db) (pr-encode bkey) (dbiflags flags))]
+    (->Bucket db (lmdb-access dbi) nil)))
+
+(defn -begin! [db flags]
+  (io!)
+  (-set-txn! db (.txn (-env db) (-txn db) (txnflags flags)))
+  db)
+
+(defn -commit! [db]
+  (when-let [txn (-txn db)]
+    (io!)
+    (let [parent (.getParent txn)]
+      (.commit txn)
+      (-set-txn! db parent)))
+  db)
+
+(defn -rollback! [db]
+  (when-let [txn (-txn db)]
+    (io!)
+    (let [parent (.getParent txn)]
+      (.abort txn)
+      (-set-txn! db parent)))
+    db)
+
+(defn -bucket-keys [db]
+  (map pr-decode (.getDbiNames (-env db))))
+
+
   
 (deftype Database [dirpath
                   ^Env env
                   ^Txn ^:unsynchronized-mutable txn
                   ^Txn ^:unsynchronized-mutable rotxn]
   PDatabase
-  (-txn [this] txn)
-
-  (-rotxn [this] rotxn)
-
-  (-open-bucket! [this bkey flags]
-    (io!)
-    (let [dbi (.openDbi env (pr-encode bkey) (dbiflags flags))]
-      (->Bucket this (lmdb-access dbi) nil)))
-
-  (-begin! [this flags]
-    (io!)
-    (set! txn (.txn env ^Txn txn (txnflags flags)))
-    this)
-
-  (-commit! [this]
-    (when txn
-      (io!)
-      (let [parent (.getParent txn)]
-        (.commit txn)
-        (set! txn parent)))
-    this)
-
-  (-rollback! [this]
-    (when txn
-      (io!)
-      (let [parent (.getParent txn)]
-        (.abort txn)
-        (set! txn parent)))
-    this)
-
-  (-bucket-keys [this]
-    (map pr-decode (.getDbiNames env)))
-
+  (-txn ^Txn [this] txn)
+  (-rotxn ^Txn [this] rotxn)
+  (-set-txn! [this transaction] (set! txn transaction))
+  (-env ^Env [this] env)
 
   java.io.Closeable
   (close [this]

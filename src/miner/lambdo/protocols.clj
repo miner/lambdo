@@ -35,13 +35,10 @@
   (-append! [this key val]))
 
 (defprotocol PDatabase
-  (-open-bucket! [this bkey flags])
-  (-begin! [this flags])
-  (-commit! [this])
-  (-rollback! [this])
-  (-txn [this])
-  (-rotxn [this])
-  (-bucket-keys [this]))
+  (-env ^Env [this])
+  (-txn ^Txn [this])
+  (-rotxn ^Txn [this])
+  (-set-txn! [this transaction]))
 
 (defprotocol PSortedSnapshot
   (sorted-snapshot? [this]))
