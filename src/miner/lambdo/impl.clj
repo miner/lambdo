@@ -398,10 +398,10 @@
   ;; bucket must fresh and sequential writes must be in key order
 (defn -append! [bucket key val]
   (io!)
-  (if-let [tx (-txn (-database bucket))]
+  (if-let [txn (-txn (-database bucket))]
     (let [kcode (-encode-key bucket key)]
-      (.put ^Dbi (-dbi bucket) ^Txn tx kcode
-            (-reserve-val bucket tx kcode val)
+      (.put ^Dbi (-dbi bucket) ^Txn txn kcode
+            (-reserve-val bucket txn kcode val)
             (putflags [PutFlags/MDB_APPEND])))
     (throw (ex-info "Must be in transaction to append!"
                     {:bucket bucket
@@ -424,19 +424,20 @@
   (-encode-key [this key] (-encode-key encoder key))
   (-decode-key [this raw] (-decode-key encoder raw))
   (-encode-val [this value] (-encode-val encoder val))
+  (-reserve-val [this txn kcode val] (-reserve-val encoder txn kcode val))
   (-decode-val [this raw] (-decode-val encoder raw))
   
   clojure.lang.ILookup
   (valAt [this key]
-    (let [kcode (-encode-key encoder key)]
-      (-decode-val encoder (with-txn this txn (.get ^Dbi (-dbi encoder) txn kcode)))))
+    (let [kcode (-encode-key this key)]
+      (-decode-val this (with-txn this txn (.get ^Dbi (-dbi this) txn kcode)))))
 
   (valAt [this key not-found]
-    (let [kcode (-encode-key encoder key)]
+    (let [kcode (-encode-key this key)]
       (if-let [raw (with-cursor this cursor 
                      (when (cursor-has-kcode? cursor kcode)
                        (.val ^Cursor cursor)))]
-        (-decode-val encoder ^bytes raw)
+        (-decode-val this ^bytes raw)
         not-found)))
 
   ;; No, it should not be Associative -- that implies IPersistentCollection and we are not
@@ -446,11 +447,11 @@
   (assoc [this key val]
     (io!)
     (if-let [tx (-txn database)]
-      (let [kcode (-encode-key encoder key)]
-        (.put ^Dbi (-dbi encoder) ^Txn tx kcode
-              (-reserve-val encoder tx kcode val)
+      (let [kcode (-encode-key this key)]
+        (.put ^Dbi (-dbi this) ^Txn tx kcode
+              (-reserve-val this tx kcode val)
               (putflags [])))
-      (.put ^Dbi (-dbi encoder) (-encode-key encoder key) (-encode-val encoder val)))
+      (.put ^Dbi (-dbi this) (-encode-key this key) (-encode-val this val)))
     this)
 
   (conj [this map-entry]
@@ -474,12 +475,12 @@
   (without [this key]
     (io!)
     (if-let [tx (-txn database)]
-      (.delete ^Dbi (-dbi encoder) ^Txn tx (-encode-key encoder key))
-      (.delete ^Dbi (-dbi encoder) (-encode-key encoder key)))
+      (.delete ^Dbi (-dbi this) ^Txn tx (-encode-key this key))
+      (.delete ^Dbi (-dbi this) (-encode-key this key)))
     this)
 
   (count [this]
-    (with-txn this txn  (.entries ^Stat (.stat ^Dbi (-dbi encoder) txn))))
+    (with-txn this txn  (.entries ^Stat (.stat ^Dbi (-dbi this) txn))))
 
   clojure.lang.Seqable
   (seq [this]
@@ -509,7 +510,7 @@
 
   PKeyed
   (-key? [this key]
-    (let [kcode (-encode-key encoder key)]
+    (let [kcode (-encode-key this key)]
       (with-cursor this cursor
         (cursor-has-kcode? cursor kcode))))
 

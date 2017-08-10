@@ -15,8 +15,11 @@
   (-encode-key [this key])
   (-decode-key [this raw])
   (-encode-val [this value])
-  (-reserve-val [this txn kcode value])
-  (-decode-val [this raw]))
+  (-decode-val [this raw])
+
+  ;; SEM dubious benefit, more complexity, probably not worth it
+  (-reserve-val [this txn kcode value]))
+
 
 ;; open way to implement clojure.core/contains?, but with a better name
 (defprotocol PKeyed
