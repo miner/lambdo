@@ -434,9 +434,24 @@
   bucket)
 
 
-;; Be careful about changing field names, some macros literally depend on them.
+(defn -count [bucket]
+  (with-txn bucket txn
+    (.entries ^Stat (.stat ^Dbi (-dbi bucket) txn))))
+
+(defn -bucket-key? [bucket key]
+  (let [kcode (-encode-key bucket key)]
+    (with-cursor bucket cursor
+      (cursor-has-kcode? cursor kcode))))
+
+(defn -without [bucket key]
+  (io!)
+  (if-let [txn (-txn (-database bucket))]
+    (.delete ^Dbi (-dbi bucket) ^Txn txn (-encode-key bucket key))
+    (.delete ^Dbi (-dbi bucket) (-encode-key bucket key)))
+  bucket)
+
+
 (deftype Bucket [database encoder ^:unsynchronized-mutable ^Cursor ro-cursor]
-  
   PBucket
   (-database [this] database)
   (-set-ro-cursor! [this cursor] (set! ro-cursor cursor))
@@ -475,31 +490,21 @@
                        :bucket this})))
     (reduce-kv assoc (sorted-map-by pr-compare) this))
 
-  (without [this key]
-    (io!)
-    (if-let [tx (-txn database)]
-      (.delete ^Dbi (-dbi this) ^Txn tx (-encode-key this key))
-      (.delete ^Dbi (-dbi this) (-encode-key this key)))
-    this)
+  (without [this key] (-without this key))
 
-  (count [this]
-    (with-txn this txn  (.entries ^Stat (.stat ^Dbi (-dbi this) txn))))
+  (count [this] (-count this))
 
   clojure.lang.Seqable
-  (seq [this]
-    (bucket-reduce this conj () nil nil -1))
+  (seq [this] (bucket-reduce this conj () nil nil -1))
 
   clojure.lang.IReduce
-  (reduce [this f]
-    (bucket-reduce this f (f) nil nil 1))
+  (reduce [this f] (bucket-reduce this f (f) nil nil 1))
 
   clojure.lang.IReduceInit
-  (reduce [this f init]
-    (bucket-reduce this f init nil nil 1))
+  (reduce [this f init] (bucket-reduce this f init nil nil 1))
 
   clojure.lang.IKVReduce
-  (kvreduce [this f3 init]
-    (bucket-reduce-kv this f3 init nil nil 1))
+  (kvreduce [this f3 init] (bucket-reduce-kv this f3 init nil nil 1))
 
   clojure.lang.Sorted
   (comparator [this] pr-compare)
@@ -511,10 +516,7 @@
       (bucket-reduce this conj () key nil 1)))
 
   PKeyed
-  (-key? [this key]
-    (let [kcode (-encode-key this key)]
-      (with-cursor this cursor
-        (cursor-has-kcode? cursor kcode))))
+  (-key? [this key] (-bucket-key? this key))
 
   )
 
