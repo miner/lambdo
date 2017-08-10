@@ -411,6 +411,29 @@
 
 
 
+(defn -valAt [bucket key not-found]
+  (let [kcode (-encode-key bucket key)]
+    (if (nil? not-found)
+      (-decode-val bucket (with-txn bucket txn (.get ^Dbi (-dbi bucket) txn kcode))) 
+      (if-let [raw (with-cursor bucket cursor 
+                     (when (cursor-has-kcode? cursor kcode)
+                       (.val ^Cursor cursor)))]
+        (-decode-val bucket raw)
+        not-found))))
+
+
+(defn -assoc! [bucket key value]
+  (io!)
+  (let [kcode (-encode-key bucket key)
+        dbi ^Dbi (-dbi bucket)]
+    (if-let [txn (-txn (-database bucket))]
+      (.put dbi ^Txn txn kcode
+            (-reserve-val bucket txn kcode value)
+            (putflags []))
+      (.put dbi kcode (-encode-val bucket value))))
+  bucket)
+
+
 ;; Be careful about changing field names, some macros literally depend on them.
 (deftype Bucket [database encoder ^:unsynchronized-mutable ^Cursor ro-cursor]
   
@@ -423,40 +446,20 @@
   (-dbi [this] (-dbi encoder))
   (-encode-key [this key] (-encode-key encoder key))
   (-decode-key [this raw] (-decode-key encoder raw))
-  (-encode-val [this value] (-encode-val encoder val))
-  (-reserve-val [this txn kcode val] (-reserve-val encoder txn kcode val))
+  (-encode-val [this value] (-encode-val encoder value))
+  (-reserve-val [this txn kcode value] (-reserve-val encoder txn kcode value))
   (-decode-val [this raw] (-decode-val encoder raw))
   
   clojure.lang.ILookup
-  (valAt [this key]
-    (let [kcode (-encode-key this key)]
-      (-decode-val this (with-txn this txn (.get ^Dbi (-dbi this) txn kcode)))))
-
-  (valAt [this key not-found]
-    (let [kcode (-encode-key this key)]
-      (if-let [raw (with-cursor this cursor 
-                     (when (cursor-has-kcode? cursor kcode)
-                       (.val ^Cursor cursor)))]
-        (-decode-val this ^bytes raw)
-        not-found)))
+  (valAt [this key] (-valAt this key nil))
+  (valAt [this key not-found] (-valAt this key not-found))
 
   ;; No, it should not be Associative -- that implies IPersistentCollection and we are not
   ;; Persistent.  We would have to use separate transactions to allow the old to persist
 
   clojure.lang.ITransientMap
-  (assoc [this key val]
-    (io!)
-    (if-let [tx (-txn database)]
-      (let [kcode (-encode-key this key)]
-        (.put ^Dbi (-dbi this) ^Txn tx kcode
-              (-reserve-val this tx kcode val)
-              (putflags [])))
-      (.put ^Dbi (-dbi this) (-encode-key this key) (-encode-val this val)))
-    this)
-
-  (conj [this map-entry]
-    (.assoc this (key map-entry) (val map-entry)))
-
+  (assoc [this key value] (-assoc! this key value))
+  (conj [this map-entry](-assoc! this (key map-entry) (val map-entry)))
 
   ;; SEM: FUTURE ISSUE -- uses pr-compare but we might specialize buckets later.
   ;; 
@@ -498,7 +501,6 @@
   (kvreduce [this f3 init]
     (bucket-reduce-kv this f3 init nil nil 1))
 
-  ;; SEM -- note Clojure ascending is opposite sense of lambdo reverse?
   clojure.lang.Sorted
   (comparator [this] pr-compare)
   (entryKey [this entry] (key entry))
