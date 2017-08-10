@@ -14,7 +14,7 @@
 (deftest print-proxy
   (testing "Report proxy and buffer types"
     (println "Proxy" (str (class lmdb-proxy)))
-    (println "Buffer" (str (class (lmdb-access nil))))
+    (println "Buffer" (str (lmdb-bucket-constructor nil)))
     (println)
     true))
 
@@ -127,7 +127,7 @@
 
 (deftest reducible-steps
   (testing "Reducibles and steps"
-    (let [pathname (make-tmpdir (str "TEST_REDSTEPS_" (System/currentTimeMillis)))
+    (let [pathname (make-tmpdir (str "LAMBDO_TEST_REDSTEPS_" (System/currentTimeMillis)))
           database (create-database! pathname)
           bbb (create-bucket! database :bbb {:a 1 :b 2 :c 3 :d 4 :e 5 :f 6 :g 7})]
       (println "reducibles-test path:" (str pathname))

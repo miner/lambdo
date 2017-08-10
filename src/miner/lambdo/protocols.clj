@@ -5,13 +5,11 @@
 
 (defprotocol PBucket
   (-database [this])
+  (-dbi [this])
   ;; https://dev.clojure.org/jira/browse/CLJ-1023  work-around
   ;; hack to make mutable ro-cursor accessible
   (-set-ro-cursor! [this cursor])
-  (-ro-cursor [this]))
-  
-(defprotocol PBucketAccess
-  (-dbi [this])
+  (-ro-cursor [this])
   (-encode-key [this key])
   (-decode-key [this raw])
   (-encode-val [this value])

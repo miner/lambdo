@@ -2,30 +2,28 @@
   (:require [clojure.java.io :as io]
             [miner.lambdo.impl :refer :all]
             [miner.lambdo.protocols :refer :all])
-  (:import (miner.lambdo.impl Database Bucket)
+  (:import (miner.lambdo.impl Database)
            (org.lmdbjava Env EnvFlags Dbi DbiFlags)))
-
-
 
 
 ;; SEM FIXME: do something with options,  `create` ignored
 
-(defn open-database ^Database [dirpath & {:keys [size-mb create]}]
+(defn open-database [dirpath & {:keys [size-mb create]}]
   (let [^Env env (create-env dirpath (or size-mb 10))]
     (->Database dirpath
                env
                nil
                (doto (.txnRead env) (.reset)))))
 
-(defn create-database! ^Database [dirpath & {:keys [size-mb]}]
+(defn create-database! [dirpath & {:keys [size-mb]}]
   (let [base (io/file dirpath)
         filepath (if (= (.getName base) ".") base (io/file base "."))]
     (io/make-parents filepath)
     (open-database filepath :size-mb size-mb :create true)))
 
-(defn close-database! [^Database database]
+(defn close-database! [database]
   (io!)
-  (.close database)
+  (.close ^Database database)
   database)
 
 

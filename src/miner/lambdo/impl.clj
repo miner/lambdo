@@ -451,19 +451,25 @@
   bucket)
 
 
-(deftype Bucket [database encoder ^:unsynchronized-mutable ^Cursor ro-cursor]
+(deftype ByteBufferBucket [database ^Dbi dbi ^:unsynchronized-mutable ^Cursor ro-cursor]
+
   PBucket
+  (-dbi ^Dbi [this] dbi)
   (-database [this] database)
   (-set-ro-cursor! [this cursor] (set! ro-cursor cursor))
   (-ro-cursor [this] ro-cursor)
+  
+  (-encode-key [this key] (pr-encode-byte-buffer key))
 
-  PBucketAccess
-  (-dbi [this] (-dbi encoder))
-  (-encode-key [this key] (-encode-key encoder key))
-  (-decode-key [this raw] (-decode-key encoder raw))
-  (-encode-val [this value] (-encode-val encoder value))
-  (-reserve-val [this txn kcode value] (-reserve-val encoder txn kcode value))
-  (-decode-val [this raw] (-decode-val encoder raw))
+  (-reserve-val [this txn kcode val]
+    (when val
+      (let [raw ^bytes (nip/fast-freeze val)
+            ^ByteBuffer bb (.reserve dbi txn kcode (alength raw) (putflags []))]
+        (.flip (.put bb raw)))))
+  
+  (-decode-key [this barr] (pr-decode-byte-buffer barr))
+  (-encode-val [this val] (nippy-encode-byte-buffer val))
+  (-decode-val [this barr] (nippy-decode-byte-buffer barr))
   
   clojure.lang.ILookup
   (valAt [this key] (-valAt this key nil))
@@ -521,62 +527,91 @@
   )
 
 
-(deftype ByteArrayAccess [^Dbi dbi]
-  PBucketAccess
+
+
+(deftype ByteArrayBucket [database ^Dbi dbi ^:unsynchronized-mutable ^Cursor ro-cursor]
+
+  PBucket
   (-dbi ^Dbi [this] dbi)
+  (-database [this] database)
+  (-set-ro-cursor! [this cursor] (set! ro-cursor cursor))
+  (-ro-cursor [this] ro-cursor)
   (-encode-key [this key] (pr-encode key))
   (-decode-key [this barr] (pr-decode barr))
   (-encode-val [this val] (nip-encode val))
   (-reserve-val [this txn kcode val] (nip-encode val))
-  (-decode-val [this barr] (nip-decode barr)))
-    
-
-(deftype ByteBufferAccess [^Dbi dbi]
-  PBucketAccess
-  (-dbi ^Dbi [this] dbi)
-  (-encode-key [this key] (pr-encode-byte-buffer key))
-
-  (-reserve-val [this txn kcode val]
-    (when val
-      (let [raw ^bytes (nip/fast-freeze val)
-            ^ByteBuffer bb (.reserve dbi txn kcode (alength raw) (putflags []))]
-        (.flip (.put bb raw)))))
+  (-decode-val [this barr] (nip-decode barr))
   
-  (-decode-key [this barr] (pr-decode-byte-buffer barr))
-  (-encode-val [this val] (nippy-encode-byte-buffer val))
-  (-decode-val [this barr] (nippy-decode-byte-buffer barr)))
-    
+  clojure.lang.ILookup
+  (valAt [this key] (-valAt this key nil))
+  (valAt [this key not-found] (-valAt this key not-found))
 
+  ;; No, it should not be Associative -- that implies IPersistentCollection and we are not
+  ;; Persistent.  We would have to use separate transactions to allow the old to persist
 
-#_
-(deftype FressianAccess [^Dbi dbi]
-  PBucketAccess
-  (-dbi ^Dbi [this] dbi)
-  (-encode-key [this key] (pr-encode-byte-buffer key))
-  (-decode-key [this bbuf] (pr-decode-byte-buffer bbuf))
+  clojure.lang.ITransientMap
+  (assoc [this key value] (-assoc! this key value))
+  (conj [this map-entry](-assoc! this (key map-entry) (val map-entry)))
 
-  ;; not really implemented
-  (-reserve-val [this txn kcode val] (fressian-encode val))
-  
-  (-encode-val [this val] (fressian-encode val))
-  (-decode-val [this bbuf] (fressian-decode bbuf)))
+  ;; SEM: FUTURE ISSUE -- uses pr-compare but we might specialize buckets later.
+  ;; 
+  ;; SEM: Issue -- this is expensive O(n), which is not the contract of persistent!
+  ;; Also, the bucket is still usable after this call to persistent! since it makes a new
+  ;; sorted-map.
+  ;; SEM: maybe we should cache the persistent sorted-map.  Clear cache on any assoc!
+  (persistent [this]
+    (when-let [tx (-txn database)]
+      (throw (ex-info "An open write transaction prevents persistent!.  The database must commit! or rollback! first."
+                      {:txn tx
+                       :database database
+                       :bucket this})))
+    (reduce-kv assoc (sorted-map-by pr-compare) this))
+
+  (without [this key] (-without this key))
+
+  (count [this] (-count this))
+
+  clojure.lang.Seqable
+  (seq [this] (bucket-reduce this conj () nil nil -1))
+
+  clojure.lang.IReduce
+  (reduce [this f] (bucket-reduce this f (f) nil nil 1))
+
+  clojure.lang.IReduceInit
+  (reduce [this f init] (bucket-reduce this f init nil nil 1))
+
+  clojure.lang.IKVReduce
+  (kvreduce [this f3 init] (bucket-reduce-kv this f3 init nil nil 1))
+
+  clojure.lang.Sorted
+  (comparator [this] pr-compare)
+  (entryKey [this entry] (key entry))
+  (seq [this ascending] (bucket-reduce this conj () nil nil (if ascending -1 1)))
+  (seqFrom [this key ascending]
+    (if ascending
+      (bucket-reduce this conj () nil key -1)
+      (bucket-reduce this conj () key nil 1)))
+
+  PKeyed
+  (-key? [this key] (-bucket-key? this key))
+
+  )
+
 
 
 
 ;; hack to allow experimentation -- eventually, pick one and run with it.
-(defn lmdb-access [dbi]
+(defn lmdb-bucket-constructor [flags]
+  ;; flags currently ignored
   (condp = lmdb-proxy
-    ByteBufferProxy/PROXY_OPTIMAL (->ByteBufferAccess dbi)
-    ;;  ByteBufferProxy/PROXY_OPTIMAL (->FressianAccess dbi)
-    ByteArrayProxy/PROXY_BA (->ByteArrayAccess dbi)))
-
-
-
+    ByteBufferProxy/PROXY_OPTIMAL ->ByteBufferBucket
+    ByteArrayProxy/PROXY_BA ->ByteArrayBucket))
+  
 
 (defn -open-bucket! [db bkey flags]
   (io!)
   (let [dbi (.openDbi (-env db) (pr-encode bkey) (dbiflags flags))]
-    (->Bucket db (lmdb-access dbi) nil)))
+    ((lmdb-bucket-constructor flags) db dbi nil)))
 
 (defn -begin! [db flags]
   (io!)
