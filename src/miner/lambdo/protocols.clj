@@ -3,7 +3,7 @@
 ;; PBucketExtra and PBucketAccess need refactoring
 ;; But PBucketAccess is used separately so be careful
 
-(defprotocol PBucketExtra
+(defprotocol PBucket
   (-database [this])
   ;; https://dev.clojure.org/jira/browse/CLJ-1023  work-around
   ;; hack to make mutable ro-cursor accessible
@@ -21,12 +21,6 @@
 ;; open way to implement clojure.core/contains?, but with a better name
 (defprotocol PKeyed
   (-key? [this key]))
-
-(defprotocol PReducibleBucket
-  (-reducible [this keys-only? start end step]))
-
-(defprotocol PAppendableBucket
-  (-append! [this key val]))
 
 (defprotocol PDatabase
   (-env ^Env [this])

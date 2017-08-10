@@ -370,10 +370,51 @@
     (-decode-key bucket (with-cursor bucket cursor (cursor-previous-kcode cursor kcode)))))
   
 
+(defn -reducible [bucket keys-only? start end step]
+  (if keys-only?
+    (reify
+      clojure.lang.Seqable
+      (seq [_]
+        (seq (bucket-reduce-keys bucket conj [] start end step)))
+
+      clojure.lang.IReduceInit
+      (reduce [_ f init]
+        (bucket-reduce-keys bucket f init start end step)))
+
+    (reify
+      clojure.lang.Seqable
+      (seq [_]
+        (seq (bucket-reduce bucket conj [] start end step)))
+
+      clojure.lang.IReduceInit
+      (reduce [_ f init]
+        (bucket-reduce bucket f init start end step))
+
+      clojure.lang.IKVReduce
+      (kvreduce [_ f3 init]
+        (bucket-reduce-kv bucket f3 init start end step)))))
+  
+
+  ;; bucket must fresh and sequential writes must be in key order
+(defn -append! [bucket key val]
+  (io!)
+  (if-let [tx (-txn (-database bucket))]
+    (let [kcode (-encode-key bucket key)]
+      (.put ^Dbi (-dbi bucket) ^Txn tx kcode
+            (-reserve-val bucket tx kcode val)
+            (putflags [PutFlags/MDB_APPEND])))
+    (throw (ex-info "Must be in transaction to append!"
+                    {:bucket bucket
+                     :key key
+                     :val val})))
+  bucket)
+
+
+
 ;; Be careful about changing field names, some macros literally depend on them.
 (deftype Bucket [database encoder ^:unsynchronized-mutable ^Cursor ro-cursor]
   
-  PBucketExtra
+  PBucket
   (-database [this] database)
   (-set-ro-cursor! [this cursor] (set! ro-cursor cursor))
   (-ro-cursor [this] ro-cursor)
@@ -471,46 +512,6 @@
     (let [kcode (-encode-key encoder key)]
       (with-cursor this cursor
         (cursor-has-kcode? cursor kcode))))
-  
-  PReducibleBucket
-  (-reducible [this keys-only? start end step]
-    (if keys-only?
-      (reify
-        clojure.lang.Seqable
-        (seq [_]
-          (seq (bucket-reduce-keys this conj [] start end step)))
-
-        clojure.lang.IReduceInit
-        (reduce [_ f init]
-          (bucket-reduce-keys this f init start end step)))
-
-      (reify
-        clojure.lang.Seqable
-        (seq [_]
-          (seq (bucket-reduce this conj [] start end step)))
-
-        clojure.lang.IReduceInit
-        (reduce [_ f init]
-          (bucket-reduce this f init start end step))
-
-        clojure.lang.IKVReduce
-        (kvreduce [_ f3 init]
-          (bucket-reduce-kv this f3 init start end step)))))
-  
-  PAppendableBucket
-  ;; bucket must fresh and sequential writes must be in key order
-  (-append! [this key val]
-    (io!)
-    (if-let [tx (-txn database)]
-      (let [kcode (-encode-key this key)]
-        (.put ^Dbi (-dbi encoder) ^Txn tx kcode
-              (-reserve-val encoder tx kcode val)
-              (putflags [PutFlags/MDB_APPEND])))
-      (throw (ex-info "Must be in transaction to append!"
-                      {:bucket this
-                       :key key
-                       :val val})))
-    this)
 
   )
 
