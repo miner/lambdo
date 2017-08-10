@@ -22,12 +22,6 @@
 (defprotocol PKeyed
   (-key? [this key]))
 
-(defprotocol PKeyNavigation
-  (-first-key [this])
-  (-last-key [this])
-  (-next-key [this key])
-  (-previous-key [this key]))
-
 (defprotocol PReducibleBucket
   (-reducible [this keys-only? start end step]))
 

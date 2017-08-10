@@ -348,6 +348,27 @@
 ;; never close the dbi, because LMDB does it that way
 
 ;; SEM Refactoring:  encoder is really PBucketAccess
+;; SEM want to refactor encoder simply into Bucket
+;;    and pull out some *Bucket protocols that could be plain functions.
+;;    goal: all methods are one-liners with work done in plain functions.
+;;    Make it easier to make new specialized bucket types (int keys, kw keys, etc.)
+
+
+
+(defn -first-key [bucket]
+  (-decode-key bucket (with-cursor bucket cursor (cursor-first-kcode cursor))))
+
+(defn -last-key [bucket]
+  (-decode-key bucket (with-cursor bucket cursor (cursor-last-kcode cursor))))
+
+(defn -next-key [bucket key]
+  (let [kcode (-encode-key bucket key)]
+    (-decode-key bucket (with-cursor bucket cursor (cursor-next-kcode cursor kcode)))))
+
+(defn -previous-key [bucket key]
+  (let [kcode (-encode-key bucket key)]
+    (-decode-key bucket (with-cursor bucket cursor (cursor-previous-kcode cursor kcode)))))
+  
 
 ;; Be careful about changing field names, some macros literally depend on them.
 (deftype Bucket [database encoder ^:unsynchronized-mutable ^Cursor ro-cursor]
@@ -450,18 +471,6 @@
     (let [kcode (-encode-key encoder key)]
       (with-cursor this cursor
         (cursor-has-kcode? cursor kcode))))
-  
-  PKeyNavigation
-  (-first-key [this]
-    (-decode-key encoder (with-cursor this cursor (cursor-first-kcode cursor))))
-  (-last-key [this]
-    (-decode-key encoder (with-cursor this cursor (cursor-last-kcode cursor))))
-  (-next-key [this key]
-    (let [kcode (-encode-key encoder key)]
-      (-decode-key encoder (with-cursor this cursor (cursor-next-kcode cursor kcode)))))
-  (-previous-key [this key]
-    (let [kcode (-encode-key encoder key)]
-      (-decode-key encoder (with-cursor this cursor (cursor-previous-kcode cursor kcode)))))
   
   PReducibleBucket
   (-reducible [this keys-only? start end step]
