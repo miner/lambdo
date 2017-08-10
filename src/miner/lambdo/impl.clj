@@ -217,7 +217,7 @@
 ;; public miner.lambdo/reducible converts step nil and 0 to 1, so not handled here
 
 ;; SEM new requirement.  All keys must be encoded before calling!
-(defn ^KeyRange key-range [start end step]
+(defn key-range ^KeyRange [start end step]
     (if (neg? step)
       (cond (and (nil? start) (nil? end)) (KeyRange/allBackward)
             (nil? start) (KeyRange/atMostBackward end)

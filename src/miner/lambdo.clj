@@ -59,7 +59,7 @@
 ;; value for the :start key or :end (the default) indicates first or last as appropriate for
 ;; :step.  If :keys-only? is true, only keys will be returned.  The default is false, in
 ;; which case, map-entries (vector of key and value) are returned as appropriate for
-;; reduce-kv.
+;; reduce.
 
 
 (defn begin! [database] (-begin! database nil))
@@ -87,7 +87,6 @@
      ;; return opened bucket
      bucket)))
 
-;; maybe call it bucket-slice ???
 ;; important: not a seq, just a reducible
 ;; although it is seqable so you can get the seq (paying for scanning)
 ;;

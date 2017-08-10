@@ -1,8 +1,5 @@
 (ns miner.lambdo.protocols)
 
-;; PBucketExtra and PBucketAccess need refactoring
-;; But PBucketAccess is used separately so be careful
-
 (defprotocol PBucket
   (-database [this])
   (-dbi [this])
