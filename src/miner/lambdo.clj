@@ -26,6 +26,11 @@
   (.close ^Database database)
   database)
 
+#_
+(defn drop-bucket! [database]
+  ...)
+
+
 
 ;; a Bucket is accessed like an ITransientMap.
 ;; Important note: all LMDB requires user to guarantee thread isolation.  Clojure transients

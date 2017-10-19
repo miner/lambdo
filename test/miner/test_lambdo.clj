@@ -4,19 +4,24 @@
             [miner.lambdo.impl :refer :all]
             [miner.lambdo :refer :all]))
 
+(deftest show-info
+  (testing "Show test info"
+    (println)
+    (println "  ** Test Info **")
+    (println "  Lambdo" (nth (clojure.edn/read-string (slurp  "project.clj")) 2))
+    (println "  Clojure" (clojure-version))
+    (println "  Proxy" (str (class lmdb-proxy)))
+    (println "  Buffer" (str (lmdb-bucket-constructor nil)))
+    (println)
+    true))
+
+
 ;; just for hacking, normally you'll want to use a permanent dir
 (defn make-tmpdir
   ([] (make-tmpdir "LAMBDO"))
   ([basename] (let [tmp (io/file (System/getenv "TMPDIR") (str basename) ".")]
                 (io/make-parents tmp)
                 tmp)))
-
-(deftest print-proxy
-  (testing "Report proxy and buffer types"
-    (println "Proxy" (str (class lmdb-proxy)))
-    (println "Buffer" (str (lmdb-bucket-constructor nil)))
-    (println)
-    true))
 
 
 (deftest simple-test
