@@ -23,7 +23,9 @@
 ;; For now, we want to be able to use either proxy.  Long term, we should choose just one
 ;; and hard-wire it.  Timing is currently about the same for my tests.  Theoretically,
 ;; PROXY_OPTIMAL should be faster, but maybe my encoding with nippy is slowing us down.
-;; Note, we adjust to the proxy in the function lmdb-access
+;; Note, we adjust to the proxy in the function lmdb-bucket-constructor but this is just for
+;; experimentation.
+
 
 (def lmdb-proxy ByteBufferProxy/PROXY_OPTIMAL)
 #_ (def lmdb-proxy ByteArrayProxy/PROXY_BA)
