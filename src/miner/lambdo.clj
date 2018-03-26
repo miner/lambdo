@@ -102,7 +102,7 @@
   (let [step (if (or (nil? step) (zero? step)) 1 step)]
     (-reducible bucket keys-only? start end step)))
 
-;; same idea as contains? but implemented with a PKeyed protocol, using my perferred name
+;; same idea as contains? but implemented with a PKeyed protocol, using my preferred name
 (defn key? [bucket key]
   (-key? bucket key))
 
