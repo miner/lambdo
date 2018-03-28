@@ -106,13 +106,20 @@
 (defn key? [bucket key]
   (-key? bucket key))
 
-(defn next-key [bucket key] (-next-key bucket key))
 
-(defn previous-key [bucket key] (-previous-key bucket key))
+(defn first-key [bucket]
+  (-decode-key bucket (with-cursor bucket cursor (cursor-first-kcode cursor))))
 
-(defn first-key [bucket] (-first-key bucket))
+(defn last-key [bucket]
+  (-decode-key bucket (with-cursor bucket cursor (cursor-last-kcode cursor))))
 
-(defn last-key [bucket] (-last-key bucket))
+(defn next-key [bucket key]
+  (let [kcode (-encode-key bucket key)]
+    (-decode-key bucket (with-cursor bucket cursor (cursor-next-kcode cursor kcode)))))
+
+(defn previous-key [bucket key]
+  (let [kcode (-encode-key bucket key)]
+    (-decode-key bucket (with-cursor bucket cursor (cursor-previous-kcode cursor kcode)))))
 
 ;; returns plain hash-map (not sorted)
 ;; see also (persistent! bucket) which returns a sorted-map for better consistency with Bucket

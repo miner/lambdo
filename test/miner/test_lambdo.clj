@@ -186,3 +186,5 @@
              (reduce + 0 (range 9000 99 -1000))))
 
       )))
+
+;; SEM -- need to mix assoc! and dissoc! tests, not just transactions.

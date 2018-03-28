@@ -267,8 +267,6 @@
 (defmacro with-txn [bucket txn & body]
   `(with-bucket-txn* ~bucket (fn [~txn] ~@body)))
 
-;; bucket-reduce* now requires a real bucket, not just PBucketAccess
-
 (defn bucket-reduce-kv [bucket f3 init start end step]
   (with-txn bucket txn
     (let [^Dbi dbi (-dbi bucket)
@@ -348,30 +346,7 @@
 
 ;; SEM FIXME: might be leaking a ro-cursor
 ;; never close the dbi, because LMDB does it that way
-
-;; SEM Refactoring:  encoder is really PBucketAccess
-;; SEM want to refactor encoder simply into Bucket
-;;    and pull out some *Bucket protocols that could be plain functions.
-;;    goal: all methods are one-liners with work done in plain functions.
-;;    Make it easier to make new specialized bucket types (int keys, kw keys, etc.)
-
-
-
-(defn -first-key [bucket]
-  (-decode-key bucket (with-cursor bucket cursor (cursor-first-kcode cursor))))
-
-(defn -last-key [bucket]
-  (-decode-key bucket (with-cursor bucket cursor (cursor-last-kcode cursor))))
-
-(defn -next-key [bucket key]
-  (let [kcode (-encode-key bucket key)]
-    (-decode-key bucket (with-cursor bucket cursor (cursor-next-kcode cursor kcode)))))
-
-(defn -previous-key [bucket key]
-  (let [kcode (-encode-key bucket key)]
-    (-decode-key bucket (with-cursor bucket cursor (cursor-previous-kcode cursor kcode)))))
   
-
 (defn -reducible [bucket keys-only? start end step]
   (if keys-only?
     (reify
@@ -397,7 +372,8 @@
         (bucket-reduce-kv bucket f3 init start end step)))))
   
 
-  ;; bucket must fresh and sequential writes must be in key order
+;; This is only for fast-loading a fresh bucket.
+;; The bucket must be fresh, and sequential writes must be in key order
 (defn -append! [bucket key val]
   (io!)
   (if-let [txn (-txn (-database bucket))]
