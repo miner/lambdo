@@ -346,7 +346,13 @@
 
 ;; SEM FIXME: might be leaking a ro-cursor
 ;; never close the dbi, because LMDB does it that way
-  
+
+;; Not sure about clojure.lang.Sequential -- in theory, it means anything that has a stable
+;; order for iteration.  Buckets are sorted by key so that makes them sequential, I think.
+;; But, clojure.lang.PersistentTreeMap (sorted-map ...) does not actually implement
+;; clojure.lang.Sequential so one of us is mistaken.  ???  The alternative definition is
+;; that c.l.Sequential is a collection that is not clojure.lang.Associative (not a map or set).
+
 (defn -reducible [bucket keys-only? start end step]
   (if keys-only?
     (reify
@@ -356,7 +362,9 @@
 
       clojure.lang.IReduceInit
       (reduce [_ f init]
-        (bucket-reduce-keys bucket f init start end step)))
+        (bucket-reduce-keys bucket f init start end step))
+
+      clojure.lang.Sequential)
 
     (reify
       clojure.lang.Seqable
@@ -369,7 +377,9 @@
 
       clojure.lang.IKVReduce
       (kvreduce [_ f3 init]
-        (bucket-reduce-kv bucket f3 init start end step)))))
+        (bucket-reduce-kv bucket f3 init start end step))
+
+      clojure.lang.Sequential) ))
   
 
 ;; This is only for fast-loading a fresh bucket.
@@ -478,6 +488,7 @@
 
   (count [this] (-count this))
 
+  clojure.lang.Sequential
   clojure.lang.Seqable
   (seq [this] (bucket-reduce this conj () nil nil -1))
 
@@ -549,6 +560,7 @@
 
   (count [this] (-count this))
 
+  clojure.lang.Sequential
   clojure.lang.Seqable
   (seq [this] (bucket-reduce this conj () nil nil -1))
 
