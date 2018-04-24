@@ -96,15 +96,15 @@
 ;; cross-platform use.
 
 
+#_
 (defn str-encode ^bytes [str]
   (when str
     (.getBytes ^String str StandardCharsets/UTF_8)))
 
+#_
 (defn str-decode [^bytes barr]
   (when barr
     (String. barr StandardCharsets/UTF_8)))
-
-
 
 
 (defn pr-encode ^bytes [val]
@@ -121,6 +121,7 @@
 (defn nip-decode [barr]
   (when barr
     (nip/fast-thaw ^bytes barr)))
+
 
 
 ;; SEM FIXME: Must copy to get into direct BB, for now.
@@ -142,6 +143,21 @@
     (fress/read byte-buf)))
 
 
+;;; SEM: some of these .rewind calls maybe should just be .flip
+;;; not sure what the lmdbjava did when writing buffer.  Maybe don't need any move before
+;;; reading?  Or should use direct (.getXXX buffer 0)
+
+;;; SEM:  really want to reuse ByteBuffers as much as possible.  Pick a good size, and save
+;;; the key-buff and val-buff.  If anything is too big, allocate a temp.  Might work.  The
+;;; KEY and VAL buffs become part of the Bucket and have to be passed into the lower level
+;;; calls.
+;;;
+;;; Or the ByteBuffers could be in a pool.  Ask for a size, get something reasonable or make
+;;; a new one and retain it.  That would let the pool be part of the overall implementation
+;;; (Database or Env level, not just bucket).   But are you sure you will quickly use the
+;;; buffer???
+
+;;; key-size is (.getMaxKeySize (.-env db)) -- typically 511
 
 
 
@@ -173,6 +189,50 @@
       (.get byte-buf barr)
       (nip/fast-thaw barr))))
 
+(comment "NOT TESTED, NOT USED"
+(defn int-encode-byte-buffer ^ByteBuffer [i]
+  (when i
+    (let [bb (ByteBuffer/allocateDirect Integer/BYTES)]
+      (.flip (.putInt bb (int i))))))
+
+(defn int-decode-byte-buffer [^ByteBuffer byte-buf]
+  (when byte-buf
+    (.rewind byte-buf)
+    (.getInt byte-buf)))
+
+
+(defn int2-encode-byte-buffer ^ByteBuffer [i j]
+  (when (and i j)
+    (let [bb (ByteBuffer/allocateDirect (* 2 Integer/BYTES))]
+      (-> bb
+          (.putInt (int i))
+          (.putInt (int j))
+          .flip))))
+
+(defn int2-decode-byte-buffer [^ByteBuffer byte-buf]
+  (when byte-buf
+    (.rewind byte-buf)
+    (let [i (.getInt byte-buf)
+          j (.getInt byte-buf)]
+      [i j])))
+
+
+(defn long-encode-byte-buffer ^ByteBuffer [i]
+  (when i
+    (let [bb (ByteBuffer/allocateDirect Long/BYTES)]
+      (.flip (.putLong bb (long i))))))
+
+(defn long-decode-byte-buffer [^ByteBuffer byte-buf]
+  (when byte-buf
+    (.rewind byte-buf)
+    (.getLong byte-buf)))
+)
+
+
+
+          
+
+
 ;; SEM FIXME -- in theory, Dbi.reserve can give us the ByteBuffer we need and save doing a
 ;; copy later, but it needs txn, etc.  so must be done within Bucket
 
@@ -186,8 +246,6 @@
 (defn cursor-has-kcode? [^Cursor cursor kcode]
   (.get cursor kcode GetOp/MDB_SET))
 
-
-;; Maybe improvements? Untested
 (defn cursor-first-kcode [^Cursor cursor]
   (and (.first cursor) (.key cursor)))
 
@@ -212,14 +270,26 @@
     (cursor-last-kcode cursor)))
 
 
+
+;; SEM FIXME:  need to recycle ByteBuffers for key encoding.  Could be in a macro.
+#_
+(with-encoded-keys [start (buffer-expr x y)
+                    end (buffer-expr z)]
+  body
+  )
+
+;;; But really only two BB ever needed for multiple keys
+
+
+
 ;; start and end are inclusive,  "closed" intervals
-;; must be encoded already (except nil)
 ;; start or end = nil means the first or last
 ;; step zero is undefined 
 ;; public miner.lambdo/reducible converts step nil and 0 to 1, so not handled here
 
-;; SEM new requirement.  All keys must be encoded before calling!
-(defn key-range ^KeyRange [start end step]
+(defn key-range ^KeyRange [bucket start-key end-key step]
+  (let [start (-encode-key bucket start-key)
+        end (-encode-key bucket end-key)]
     (if (neg? step)
       (cond (and (nil? start) (nil? end)) (KeyRange/allBackward)
             (nil? start) (KeyRange/atMostBackward end)
@@ -228,7 +298,10 @@
       (cond (and (nil? start) (nil? end))  (KeyRange/all)
             (nil? start)  (KeyRange/atMost end)
             (nil? end) (KeyRange/atLeast start)
-            :else (KeyRange/closed start end))))
+            :else (KeyRange/closed start end)))))
+
+
+
 
 (defn abs ^long [^long n]
   (if (neg? n) (- n) n))
@@ -270,9 +343,7 @@
 (defn bucket-reduce-kv [bucket f3 init start end step]
   (with-txn bucket txn
     (let [^Dbi dbi (-dbi bucket)
-          ^CursorIterator iter (.iterate dbi ^Txn txn (key-range (-encode-key bucket start)
-                                                                 (-encode-key bucket end)
-                                                                 step))
+          ^CursorIterator iter (.iterate dbi ^Txn txn (key-range bucket start end step))
           skip (long (dec (abs step)))]
       (loop [res init sk 0]
         (if (.hasNext iter)
@@ -291,9 +362,7 @@
 (defn bucket-reduce [bucket f init start end step]
   (with-txn bucket txn
     (let [^Dbi dbi (-dbi bucket)
-          ^CursorIterator iter (.iterate dbi ^Txn txn (key-range (-encode-key bucket start)
-                                                                 (-encode-key bucket end)
-                                                                 step))
+          ^CursorIterator iter (.iterate dbi ^Txn txn (key-range bucket start end step))
           skip (long (dec (abs step)))]
       (loop [res init sk 0]
         (if (.hasNext iter)
@@ -312,9 +381,7 @@
 (defn bucket-reduce-keys [bucket f init start end step]
   (with-txn bucket txn
     (let [^Dbi dbi (-dbi bucket)
-          ^CursorIterator iter (.iterate dbi ^Txn txn (key-range (-encode-key bucket start)
-                                                                 (-encode-key bucket end)
-                                                                 step))
+          ^CursorIterator iter (.iterate dbi ^Txn txn (key-range bucket start end step))
           skip (long (dec (abs step)))]
       (loop [res init sk 0]
         (if (.hasNext iter)
