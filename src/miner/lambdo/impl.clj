@@ -159,12 +159,13 @@
 
 ;;; key-size is (.getMaxKeySize (.-env db)) -- typically 511
 
+;; (ByteBuffer/allocateDirect (int (alength raw)))]
 
-
-(defn pr-encode-byte-buffer ^ByteBuffer [val]
+#_
+(defn pr-encode-byte-buffer ^ByteBuffer [bucket val]
   (when val
     (let [raw ^bytes (.getBytes (pr-str val) StandardCharsets/UTF_8)
-          ^ByteBuffer bb (ByteBuffer/allocateDirect (int (alength raw)))]
+          ^ByteBuffer bb (-alloc-buffer bucket (alength raw))]
       (.flip (.put bb raw)))))
 
 (defn pr-decode-byte-buffer [^ByteBuffer byte-buf]
@@ -175,10 +176,11 @@
       (.get byte-buf barr)
       (edn/read-string (String. barr StandardCharsets/UTF_8)))))
 
-(defn nippy-encode-byte-buffer ^ByteBuffer [val]
+#_
+(defn nippy-encode-byte-buffer ^ByteBuffer [bucket val]
   (when val
     (let [raw ^bytes (nip/fast-freeze val)
-          ^ByteBuffer bb (ByteBuffer/allocateDirect (int (alength raw)))]
+          ^ByteBuffer bb (-alloc-buffer bucket (alength raw))]
       (.flip (.put bb raw)))))
 
 (defn nippy-decode-byte-buffer [^ByteBuffer byte-buf]
@@ -287,18 +289,18 @@
 ;; step zero is undefined 
 ;; public miner.lambdo/reducible converts step nil and 0 to 1, so not handled here
 
-(defn key-range ^KeyRange [bucket start-key end-key step]
-  (let [start (-encode-key bucket start-key)
-        end (-encode-key bucket end-key)]
-    (if (neg? step)
-      (cond (and (nil? start) (nil? end)) (KeyRange/allBackward)
-            (nil? start) (KeyRange/atMostBackward end)
-            (nil? end) (KeyRange/atLeastBackward start)
-            :else (KeyRange/closedBackward start end))
-      (cond (and (nil? start) (nil? end))  (KeyRange/all)
-            (nil? start)  (KeyRange/atMost end)
-            (nil? end) (KeyRange/atLeast start)
-            :else (KeyRange/closed start end)))))
+;; start and end must already be encoded.  Step cannot be nil or 0.
+
+(defn encoded-key-range ^KeyRange [bucket start end step]
+  (if (neg? step)
+    (cond (and (nil? start) (nil? end)) (KeyRange/allBackward)
+          (nil? start) (KeyRange/atMostBackward end)
+          (nil? end) (KeyRange/atLeastBackward start)
+          :else (KeyRange/closedBackward start end))
+    (cond (and (nil? start) (nil? end))  (KeyRange/all)
+          (nil? start)  (KeyRange/atMost end)
+          (nil? end) (KeyRange/atLeast start)
+          :else (KeyRange/closed start end))))
 
 
 
@@ -343,7 +345,7 @@
 (defn bucket-reduce-kv [bucket f3 init start end step]
   (with-txn bucket txn
     (let [^Dbi dbi (-dbi bucket)
-          ^CursorIterator iter (.iterate dbi ^Txn txn (key-range bucket start end step))
+          ^CursorIterator iter (.iterate dbi ^Txn txn (-key-range bucket start end step))
           skip (long (dec (abs step)))]
       (loop [res init sk 0]
         (if (.hasNext iter)
@@ -362,7 +364,7 @@
 (defn bucket-reduce [bucket f init start end step]
   (with-txn bucket txn
     (let [^Dbi dbi (-dbi bucket)
-          ^CursorIterator iter (.iterate dbi ^Txn txn (key-range bucket start end step))
+          ^CursorIterator iter (.iterate dbi ^Txn txn (-key-range bucket start end step))
           skip (long (dec (abs step)))]
       (loop [res init sk 0]
         (if (.hasNext iter)
@@ -381,7 +383,7 @@
 (defn bucket-reduce-keys [bucket f init start end step]
   (with-txn bucket txn
     (let [^Dbi dbi (-dbi bucket)
-          ^CursorIterator iter (.iterate dbi ^Txn txn (key-range bucket start end step))
+          ^CursorIterator iter (.iterate dbi ^Txn txn (-key-range bucket start end step))
           skip (long (dec (abs step)))]
       (loop [res init sk 0]
         (if (.hasNext iter)
@@ -506,6 +508,8 @@
   bucket)
 
 
+(declare bbb-alloc-buffer)
+
 (deftype ByteBufferBucket [database ^Dbi dbi ^:unsynchronized-mutable ^Cursor ro-cursor]
 
   PBucket
@@ -513,8 +517,13 @@
   (-database [this] database)
   (-set-ro-cursor! [this cursor] (set! ro-cursor cursor))
   (-ro-cursor [this] ro-cursor)
-  
-  (-encode-key [this key] (pr-encode-byte-buffer key))
+
+  (-encode-key [this key]
+    ;; was (pr-encode-byte-buffer this key))
+    (when key
+      (let [raw ^bytes (.getBytes (pr-str key) StandardCharsets/UTF_8)
+          ^ByteBuffer bb (bbb-alloc-buffer this (alength raw))]
+        (.flip (.put bb raw)))))
 
   (-reserve-val [this txn kcode val]
     (when val
@@ -523,8 +532,26 @@
         (.flip (.put bb raw)))))
   
   (-decode-key [this barr] (pr-decode-byte-buffer barr))
-  (-encode-val [this val] (nippy-encode-byte-buffer val))
+
+  (-encode-val [this val]
+    ;; was (nippy-encode-byte-buffer this val))
+    (when val
+      (let [raw ^bytes (nip/fast-freeze val)
+            ^ByteBuffer bb (bbb-alloc-buffer this (alength raw))]
+        (.flip (.put bb raw)))))
+
+
   (-decode-val [this barr] (nippy-decode-byte-buffer barr))
+
+  ;; start and end are inclusive,  "closed" intervals
+  ;; start or end = nil means the first or last
+  ;; step zero is undefined 
+  ;; public miner.lambdo/reducible converts step nil and 0 to 1, so not handled here
+
+  (-key-range ^KeyRange [this start-key end-key step]
+    (let [start (-encode-key this start-key)
+          end (-encode-key this end-key)]
+      (encoded-key-range this start end step)))
   
   clojure.lang.ILookup
   (valAt [this key] (-valAt this key nil))
@@ -585,6 +612,15 @@
 
 
 
+(defn bbb-alloc-buffer [^ByteBufferBucket bucket size]
+  (ByteBuffer/allocateDirect (int size)))
+
+
+
+
+
+
+
 (deftype ByteArrayBucket [database ^Dbi dbi ^:unsynchronized-mutable ^Cursor ro-cursor]
 
   PBucket
@@ -597,6 +633,11 @@
   (-encode-val [this val] (nip-encode val))
   (-reserve-val [this txn kcode val] (nip-encode val))
   (-decode-val [this barr] (nip-decode barr))
+
+  (-key-range ^KeyRange [this start-key end-key step]
+    (let [start (-encode-key this start-key)
+          end (-encode-key this end-key)]
+      (encoded-key-range this start end step)))
   
   clojure.lang.ILookup
   (valAt [this key] (-valAt this key nil))
@@ -658,17 +699,22 @@
 
 
 ;; hack to allow experimentation -- eventually, pick one and run with it.
+;; SEM: we're picking ByteBufferProxy as the winner.  So don't change this without fixing
+;; other things like -open-bucket.
 (defn lmdb-bucket-constructor [flags]
   ;; flags currently ignored
   (condp = lmdb-proxy
     ByteBufferProxy/PROXY_OPTIMAL ->ByteBufferBucket
     ByteArrayProxy/PROXY_BA ->ByteArrayBucket))
-  
+
+
 
 (defn -open-bucket! [db bkey flags]
   (io!)
   (let [dbi (.openDbi (-env db) (pr-encode bkey) (dbiflags flags))]
-    ((lmdb-bucket-constructor flags) db dbi nil)))
+    ;; mostly ignoring flags
+    ;; but should look for INTEGER_KEY (something like that)
+    (->ByteBufferBucket db dbi nil)))
 
 (defn -begin! [db flags]
   (io!)

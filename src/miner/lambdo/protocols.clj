@@ -1,4 +1,5 @@
-(ns miner.lambdo.protocols)
+(ns miner.lambdo.protocols
+  (:import (org.lmdbjava KeyRange)))
 
 (defprotocol PBucket
   (-database [this])
@@ -11,7 +12,7 @@
   (-decode-key [this raw])
   (-encode-val [this value])
   (-decode-val [this raw])
-
+  (-key-range ^KeyRange [this start end step])
   ;; SEM dubious benefit, more complexity, probably not worth it
   (-reserve-val [this txn kcode value]))
 

@@ -6,4 +6,4 @@
   :dependencies [[org.clojure/clojure "1.9.0"]
                  ;; [org.clojure/data.fressian "0.2.1-SNAPSHOT"]
                  [com.taoensso/nippy "2.14.0"]
-                 [org.lmdbjava/lmdbjava "0.6.0"]])
+                 [org.lmdbjava/lmdbjava "0.6.1"]])
