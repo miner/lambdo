@@ -508,9 +508,33 @@
   bucket)
 
 
-(declare bbb-alloc-buffer)
 
-(deftype ByteBufferBucket [database ^Dbi dbi ^:unsynchronized-mutable ^Cursor ro-cursor]
+(defn bbb-alloc-buffer ^ByteBuffer [^ByteBuffer buffer size]
+  (if (or (nil? buffer) (<= size (.capacity buffer)))
+    (ByteBuffer/allocateDirect (int size))
+    (.clear buffer)))
+
+
+(defn bbb-encode-key [key ^ByteBuffer buffer]
+  (when key
+    (let [raw ^bytes (.getBytes (pr-str key) StandardCharsets/UTF_8)
+          ^ByteBuffer bb (bbb-alloc-buffer buffer (alength raw))]
+        (.flip (.put bb raw)))))
+
+
+;; SEM would be better to have one field for buffer array and recycle biggest (up to a
+;; limit)
+;;
+;; SEM short term -- buffer doesn't have to be mutable since we create once and reuse, but
+;; never mutate field.
+
+(deftype ByteBufferBucket [database
+                           ^Dbi dbi
+                           ^:unsynchronized-mutable ^Cursor ro-cursor
+                           ;; ^:unsynchronized-mutable
+                           ^ByteBuffer kbuffer
+                           ;; ^:unsynchronized-mutable
+                           ^ByteBuffer vbuffer]
 
   PBucket
   (-dbi ^Dbi [this] dbi)
@@ -519,11 +543,7 @@
   (-ro-cursor [this] ro-cursor)
 
   (-encode-key [this key]
-    ;; was (pr-encode-byte-buffer this key))
-    (when key
-      (let [raw ^bytes (.getBytes (pr-str key) StandardCharsets/UTF_8)
-          ^ByteBuffer bb (bbb-alloc-buffer this (alength raw))]
-        (.flip (.put bb raw)))))
+    (bbb-encode-key key kbuffer))
 
   (-reserve-val [this txn kcode val]
     (when val
@@ -537,8 +557,10 @@
     ;; was (nippy-encode-byte-buffer this val))
     (when val
       (let [raw ^bytes (nip/fast-freeze val)
-            ^ByteBuffer bb (bbb-alloc-buffer this (alength raw))]
+            ^ByteBuffer bb (bbb-alloc-buffer vbuffer (alength raw))]
         (.flip (.put bb raw)))))
+
+
 
 
   (-decode-val [this barr] (nippy-decode-byte-buffer barr))
@@ -549,8 +571,9 @@
   ;; public miner.lambdo/reducible converts step nil and 0 to 1, so not handled here
 
   (-key-range ^KeyRange [this start-key end-key step]
-    (let [start (-encode-key this start-key)
-          end (-encode-key this end-key)]
+    (let [start (bbb-encode-key start-key kbuffer)
+          ;; temporarily use vbuffer for end key, no val neeeded
+          end (bbb-encode-key end-key vbuffer)]
       (encoded-key-range this start end step)))
   
   clojure.lang.ILookup
@@ -608,14 +631,6 @@
   (-key? [this key] (-bucket-key? this key))
 
   )
-
-
-
-
-(defn bbb-alloc-buffer [^ByteBufferBucket bucket size]
-  (ByteBuffer/allocateDirect (int size)))
-
-
 
 
 
@@ -714,7 +729,9 @@
   (let [dbi (.openDbi (-env db) (pr-encode bkey) (dbiflags flags))]
     ;; mostly ignoring flags
     ;; but should look for INTEGER_KEY (something like that)
-    (->ByteBufferBucket db dbi nil)))
+    (->ByteBufferBucket db dbi nil
+                        (ByteBuffer/allocateDirect (-maxKeySize db))
+                        (ByteBuffer/allocateDirect (* 5 (-maxKeySize db))))))
 
 (defn -begin! [db flags]
   (io!)
@@ -751,6 +768,7 @@
   (-rotxn ^Txn [this] rotxn)
   (-set-txn! [this transaction] (set! txn transaction))
   (-env ^Env [this] env)
+  (-maxKeySize [this] (.getMaxKeySize env))
 
   java.io.Closeable
   (close [this]

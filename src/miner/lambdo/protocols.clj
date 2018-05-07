@@ -24,6 +24,7 @@
 (defprotocol PDatabase
   (-env ^Env [this])
   (-txn ^Txn [this])
+  (-maxKeySize [this])
   (-rotxn ^Txn [this])
   (-set-txn! [this transaction]))
 
