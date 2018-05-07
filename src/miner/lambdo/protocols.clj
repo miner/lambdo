@@ -14,7 +14,7 @@
   (-decode-val [this raw])
   (-key-range ^KeyRange [this start end step])
   ;; SEM dubious benefit, more complexity, probably not worth it
-  (-reserve-val [this txn kcode value]))
+  (-put-reserve-val [this txn kcode value flags]))
 
 
 ;; open way to implement clojure.core/contains?, but with a better name

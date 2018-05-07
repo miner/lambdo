@@ -457,9 +457,9 @@
   (io!)
   (if-let [txn (-txn (-database bucket))]
     (let [kcode (-encode-key bucket key)]
-      (.put ^Dbi (-dbi bucket) ^Txn txn kcode
-            (-reserve-val bucket txn kcode val)
-            (putflags [PutFlags/MDB_APPEND])))
+      (or (-put-reserve-val bucket txn kcode val [PutFlags/MDB_APPEND])
+          (.put ^Dbi (-dbi bucket) ^Txn txn kcode (-encode-val bucket val)
+                (putflags [PutFlags/MDB_APPEND]))))
     (throw (ex-info "Must be in transaction to append!"
                     {:bucket bucket
                      :key key
@@ -484,9 +484,8 @@
   (let [kcode (-encode-key bucket key)
         dbi ^Dbi (-dbi bucket)]
     (if-let [txn (-txn (-database bucket))]
-      (.put dbi ^Txn txn kcode
-            (-reserve-val bucket txn kcode value)
-            (putflags []))
+      (or (-put-reserve-val bucket txn kcode value [])
+          (.put dbi ^Txn txn kcode (-encode-val bucket value) (putflags [])))
       (.put dbi kcode (-encode-val bucket value))))
   bucket)
 
@@ -545,10 +544,10 @@
   (-encode-key [this key]
     (bbb-encode-key key kbuffer))
 
-  (-reserve-val [this txn kcode val]
+  (-put-reserve-val [this txn kcode val flags]
     (when val
       (let [raw ^bytes (nip/fast-freeze val)
-            ^ByteBuffer bb (.reserve dbi txn kcode (alength raw) (putflags []))]
+            ^ByteBuffer bb (.reserve dbi txn kcode (alength raw) (putflags flags))]
         (.flip (.put bb raw)))))
   
   (-decode-key [this barr] (pr-decode-byte-buffer barr))
@@ -646,7 +645,7 @@
   (-encode-key [this key] (pr-encode key))
   (-decode-key [this barr] (pr-decode barr))
   (-encode-val [this val] (nip-encode val))
-  (-reserve-val [this txn kcode val] (nip-encode val))
+  (-put-reserve-val [this txn kcode val flags] nil)
   (-decode-val [this barr] (nip-decode barr))
 
   (-key-range ^KeyRange [this start-key end-key step]
