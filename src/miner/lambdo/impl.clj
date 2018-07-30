@@ -550,7 +550,7 @@
             ^ByteBuffer bb (.reserve dbi txn kcode (alength raw) (putflags flags))]
         (.flip (.put bb raw)))))
   
-  (-decode-key [this barr] (pr-decode-byte-buffer barr))
+  (-decode-key [this bbuf] (pr-decode-byte-buffer bbuf))
 
   (-encode-val [this val]
     ;; was (nippy-encode-byte-buffer this val))
@@ -562,7 +562,7 @@
 
 
 
-  (-decode-val [this barr] (nippy-decode-byte-buffer barr))
+  (-decode-val [this bbuf] (nippy-decode-byte-buffer bbuf))
 
   ;; start and end are inclusive,  "closed" intervals
   ;; start or end = nil means the first or last
