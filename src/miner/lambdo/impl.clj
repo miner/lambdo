@@ -27,7 +27,10 @@
 ;; experimentation.
 
 
+;; if you change this, also check lmdb-bucket-constructor
 (def lmdb-proxy ByteBufferProxy/PROXY_OPTIMAL)
+
+#_ (def lmdb-proxy ByteBufferProxy/PROXY_SAFE)
 #_ (def lmdb-proxy ByteArrayProxy/PROXY_BA)
 
 ;; for debugging
@@ -719,6 +722,7 @@
   ;; flags currently ignored
   (condp = lmdb-proxy
     ByteBufferProxy/PROXY_OPTIMAL ->ByteBufferBucket
+    ByteBufferProxy/PROXY_SAFE ->ByteBufferBucket
     ByteArrayProxy/PROXY_BA ->ByteArrayBucket))
 
 
