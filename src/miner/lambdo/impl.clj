@@ -33,6 +33,9 @@
 #_ (def lmdb-proxy ByteBufferProxy/PROXY_SAFE)
 #_ (def lmdb-proxy ByteArrayProxy/PROXY_BA)
 
+;; can't actually use ByteArrayProxy without other changes
+
+
 ;; for debugging
 (defn sysid [x]
   (format "%s-%H" (.getSimpleName ^Class (class x)) (System/identityHashCode x) ))

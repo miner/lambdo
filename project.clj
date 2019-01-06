@@ -8,4 +8,7 @@
                  [datascript "0.17.1"]
                  [net.openhft/zero-allocation-hashing "0.8"]
                  [com.taoensso/nippy "2.14.0"]
-                 [org.lmdbjava/lmdbjava "0.6.1"]])
+                 ;; [org.lmdbjava/lmdbjava "0.6.1"]
+                 ;; [org.lmdbjava/lmdbjava "0.6.3-SNAPSHOT"]
+                  [org.lmdbjava/lmdbjava "0.6.2"]
+                 ])
