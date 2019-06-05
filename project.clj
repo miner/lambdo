@@ -5,8 +5,8 @@
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.10.0"]
                  ;; [org.clojure/data.fressian "0.2.1-SNAPSHOT"]
-                 [datascript "0.18.2"]
+                 [datascript "0.18.3"]
                  [net.openhft/zero-allocation-hashing "0.9"]
                  [com.taoensso/nippy "2.14.0"]
-                 [org.lmdbjava/lmdbjava "0.6.3"]
+                 [org.lmdbjava/lmdbjava "0.7.0"]
                  ])
