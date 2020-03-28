@@ -43,8 +43,17 @@
 ;; to be stable for different runs of an application.  We have to be consistent across
 ;; processes, JVMs, and machines.  xxhash/nippy looks pretty good -- and simple for me.
 
-(defn xxhash-bytes ^long [^bytes ba]
-  (.hashBytes ^LongHashFunction (LongHashFunction/xx) ba))
 
+(def- ^LongHashFunction xxhf (LongHashFunction/xx))
+
+(defn xxhash-bytes ^long [^bytes ba]
+  (.hashBytes xxhf ba))
+
+;; generic hashing can use nippy encoding, which we might need anyway
 (defn xxhash ^long [x]
   (xxhash-bytes ^bytes (nip/fast-freeze x)))
+
+;; faster to get string bytes directly without nipping encoding
+(defn xxhash-str ^long [^String str]
+  (xxhash-bytes (.getBytes str StandardCharsets/UTF_8)))
+
