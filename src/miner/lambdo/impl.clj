@@ -6,11 +6,12 @@
             [taoensso.nippy :as nip])
   (:import (java.nio.charset StandardCharsets)
            (java.nio ByteBuffer)
+           (java.util Iterator)
            (clojure.lang MapEntry)
            (org.lmdbjava Env EnvFlags Dbi DbiFlags Txn TxnFlags PutFlags Stat GetOp
                          ByteBufferProxy ByteArrayProxy Env$Builder
                          KeyRange
-                         Cursor CursorIterator CursorIterator$KeyVal) ))
+                         Cursor CursorIterable CursorIterable$KeyVal) ))
 
 ;; All of impl is essentially private, not part of the public API
 
@@ -351,11 +352,11 @@
 (defn bucket-reduce-kv [bucket f3 init start end step]
   (with-txn bucket txn
     (let [^Dbi dbi (-dbi bucket)
-          ^CursorIterator iter (.iterate dbi ^Txn txn (-key-range bucket start end step))
+          ^Iterator iter (.iterator ^CursorIterable (.iterate dbi ^Txn txn (-key-range bucket start end step)))
           skip (long (dec (abs step)))]
       (loop [res init sk 0]
         (if (.hasNext iter)
-          (let [^CursorIterator$KeyVal kv (.next iter)]
+          (let [^CursorIterable$KeyVal kv (.next iter)]
             ;; always call .next to advance iter
             (if (pos? sk)
               (recur res (dec sk))
@@ -370,11 +371,11 @@
 (defn bucket-reduce [bucket f init start end step]
   (with-txn bucket txn
     (let [^Dbi dbi (-dbi bucket)
-          ^CursorIterator iter (.iterate dbi ^Txn txn (-key-range bucket start end step))
+          ^Iterator iter (.iterator ^CursorIterable (.iterate dbi ^Txn txn (-key-range bucket start end step)))
           skip (long (dec (abs step)))]
       (loop [res init sk 0]
         (if (.hasNext iter)
-          (let [^CursorIterator$KeyVal kv (.next iter)]
+          (let [^CursorIterable$KeyVal kv (.next iter)]
             ;; always call .next to advance iter
             (if (pos? sk)
               (recur res (dec sk))
@@ -389,11 +390,11 @@
 (defn bucket-reduce-keys [bucket f init start end step]
   (with-txn bucket txn
     (let [^Dbi dbi (-dbi bucket)
-          ^CursorIterator iter (.iterate dbi ^Txn txn (-key-range bucket start end step))
+          ^Iterator iter (.iterator ^CursorIterable (.iterate dbi ^Txn txn (-key-range bucket start end step)))
           skip (long (dec (abs step)))]
       (loop [res init sk 0]
         (if (.hasNext iter)
-          (let [^CursorIterator$KeyVal kv (.next iter)]
+          (let [^CursorIterable$KeyVal kv (.next iter)]
             ;; always call .next to advance iter
             (if (pos? sk)
               (recur res (dec sk))
@@ -517,6 +518,8 @@
 (defn bbb-alloc-buffer ^ByteBuffer [^ByteBuffer buffer size]
   (if (or (nil? buffer) (<= size (.capacity buffer)))
     (ByteBuffer/allocateDirect (int size))
+    ;; bug in java8/9 transition causes clear method not to found if libs are compiled with
+    ;; 9+ but run on 8
     (.clear buffer)))
 
 
