@@ -10,6 +10,7 @@
     (println "  ** Test Info **")
     (println "  Lambdo" (nth (clojure.edn/read-string (slurp  "project.clj")) 2))
     (println "  Clojure" (clojure-version))
+    (println "  Java" (System/getProperty "java.version"))
     (println "  Proxy" (str (class lmdb-proxy)))
     (println "  Buffer" (str (lmdb-bucket-constructor nil)))
     (println)
