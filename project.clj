@@ -1,4 +1,4 @@
-(defproject com.velisco/lambdo "0.4.6-SNAPSHOT"
+(defproject com.velisco/lambdo "0.4.7-SNAPSHOT"
   :description "Lambdo, Clojure key/value database based on LMDB"
   :url "https://github.com/miner/lambdo"
   :license {:name "Eclipse Public License"
@@ -6,11 +6,11 @@
   :repositories {"sonatype-snapshots" "https://oss.sonatype.org/content/repositories/snapshots/"}
   :dependencies [[org.clojure/clojure "1.10.1"]
                  ;; [org.clojure/data.fressian "0.2.1-SNAPSHOT"]
-                 [datascript "0.18.13"]
-                 [net.openhft/zero-allocation-hashing "0.11"]
-                 [com.taoensso/nippy "2.14.0"]
+                 [datascript "1.0.1"]
+                 [net.openhft/zero-allocation-hashing "0.12"]
+                 [com.taoensso/nippy "3.0.0"]
                  ;;[org.lmdbjava/lmdbjava "0.8.0"]
-                 [org.lmdbjava/lmdbjava "0.8.1-SNAPSHOT"]
+                 [org.lmdbjava/lmdbjava "0.8.1"]
                  ])
 
 ;; need to set env
@@ -18,3 +18,4 @@
 
 ;; snapshots of lmbdjava
 ;; https://oss.sonatype.org/content/repositories/snapshots/
+
