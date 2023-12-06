@@ -6,11 +6,11 @@
   :repositories {"sonatype-snapshots" "https://oss.sonatype.org/content/repositories/snapshots/"}
   :dependencies [[org.clojure/clojure "1.10.1"]
                  ;; [org.clojure/data.fressian "0.2.1-SNAPSHOT"]
-                 [datascript "1.0.1"]
-                 [net.openhft/zero-allocation-hashing "0.12"]
-                 [com.taoensso/nippy "3.1.0"]
+                 [datascript "1.5.4"]
+                 [net.openhft/zero-allocation-hashing "0.16"]
+                 [com.taoensso/nippy "3.3.0"]
                  ;;[org.lmdbjava/lmdbjava "0.8.0"]
-                 [org.lmdbjava/lmdbjava "0.8.1"]
+                 [org.lmdbjava/lmdbjava "0.9.0"]
                  ])
 
 ;; need to set env
