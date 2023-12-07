@@ -310,8 +310,8 @@
           :else (KeyRange/closed start end))))
 
 
-
-
+;;; only needed for older Clojure versions
+#_
 (defn abs ^long [^long n]
   (if (neg? n) (- n) n))
 
