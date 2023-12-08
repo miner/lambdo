@@ -310,11 +310,9 @@
           :else (KeyRange/closed start end))))
 
 
-;;; only needed for older Clojure versions
-#_
-(defn abs ^long [^long n]
-  (if (neg? n) (- n) n))
-
+;;; only needed for older Clojure versions (pre 1.11)
+(when-not (find-var 'clojure.core/abs)
+  (use 'miner.lambdo.abs))
 
 
 ;; https://dev.clojure.org/jira/browse/CLJ-1708

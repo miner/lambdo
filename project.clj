@@ -17,13 +17,13 @@
               "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED"] )
 
 
-;; need to set env
+;; if you need to set env
 ;; JAVA_HOME  /Library/Java/JavaVirtualMachines/amazon-corretto-8.jdk/Contents/Home
+;;
+;; now using Java 21 with special :jvm-opts options to make it work.  Those options are
+;; built in to my `cloj` script.
 
 ;;; later versions of Java (9+) need explicit settings to allow "open" access.
-
-;; snapshots of lmbdjava
-;; https://oss.sonatype.org/content/repositories/snapshots/
 
 ;;; https://stackoverflow.com/questions/73872389/java-lang-reflect-inaccessibleobjectexception-unable-to-make-field-private-fina
 
@@ -32,3 +32,6 @@
 ;;;
 ;;; --add-opens=java.base/java.nio=ALL-UNNAMED
 ;;; --add-opens=java.base/sun.nio.ch=ALL-UNNAMED
+
+;;; snapshots of lmbdjava
+;;; https://oss.sonatype.org/content/repositories/snapshots/
