@@ -311,7 +311,7 @@
 
 
 ;;; only needed for older Clojure versions (pre 1.11)
-(when-not (find-var 'clojure.core/abs)
+(when-not (resolve 'abs)
   (use 'miner.lambdo.abs))
 
 
