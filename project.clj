@@ -6,9 +6,9 @@
   :repositories {"sonatype-snapshots" "https://oss.sonatype.org/content/repositories/snapshots/"}
   :dependencies [[org.clojure/clojure "1.12.0-alpha5"]
                  ;; [org.clojure/data.fressian "0.2.1-SNAPSHOT"]
-                 [datascript "1.5.4"]
+                 [datascript "1.6.5"]
                  [net.openhft/zero-allocation-hashing "0.16"]
-                 [com.taoensso/nippy "3.3.0"]
+                 [com.taoensso/nippy "3.4.2"]
                  ;;[org.lmdbjava/lmdbjava "0.8.0"]
                  [org.lmdbjava/lmdbjava "0.9.0"]
                  ]
