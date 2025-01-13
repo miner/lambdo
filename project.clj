@@ -4,9 +4,9 @@
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :repositories {"sonatype-snapshots" "https://oss.sonatype.org/content/repositories/snapshots/"}
-  :dependencies [[org.clojure/clojure "1.12.0-alpha5"]
+  :dependencies [[org.clojure/clojure "1.12.0"]
                  ;; [org.clojure/data.fressian "0.2.1-SNAPSHOT"]
-                 [datascript "1.6.5"]
+                 [datascript "1.7.4"]
                  [net.openhft/zero-allocation-hashing "0.16"]
                  [com.taoensso/nippy "3.4.2"]
                  ;;[org.lmdbjava/lmdbjava "0.8.0"]
