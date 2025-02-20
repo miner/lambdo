@@ -1,4 +1,4 @@
-(defproject com.velisco/lambdo "0.4.8-SNAPSHOT"
+(defproject com.velisco/lambdo "0.4.9-SNAPSHOT"
   :description "Lambdo, Clojure key/value database based on LMDB"
   :url "https://github.com/miner/lambdo"
   :license {:name "Eclipse Public License"
@@ -9,8 +9,7 @@
                  [datascript "1.7.4"]
                  [net.openhft/zero-allocation-hashing "0.16"]
                  [com.taoensso/nippy "3.4.2"]
-                 ;;[org.lmdbjava/lmdbjava "0.8.0"]
-                 [org.lmdbjava/lmdbjava "0.9.0"]
+                 [org.lmdbjava/lmdbjava "0.9.1"]
                  ]
   ;; these options work only with Java 9+, works around a problem with lmdbjava
    :jvm-opts ["--add-opens=java.base/java.nio=ALL-UNNAMED"
